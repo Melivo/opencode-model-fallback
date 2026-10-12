@@ -1,0 +1,206 @@
+{
+  "version": 2,
+  "cooldownMs": 300000,
+  "maxCycles": 5,
+  "agents": {
+    "architecture-reviewer": {
+      "chain": [
+        {
+          "model": "openai/gpt-6.1-sol#high"
+        },
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#high"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#high"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3#high"
+        }
+      ]
+    },
+    "backend-engineer": {
+      "chain": [
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#low"
+        },
+        {
+          "model": "openai/gpt-6.1-sol#low"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#low"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3#low"
+        }
+      ]
+    },
+    "db-engineer": {
+      "chain": [
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#medium"
+        },
+        {
+          "model": "openai/gpt-6.1-sol#medium"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#high"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3#high"
+        }
+      ]
+    },
+    "debug-investigator": {
+      "chain": [
+        {
+          "model": "openai/gpt-5.6-terra#high"
+        },
+        {
+          "model": "claude-code/claude-sonnet-5-5#high"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3-flash#high"
+        },
+        {
+          "model": "kimi-code-plan-cn/kimi-for-coding#high"
+        }
+      ]
+    },
+    "docs-curator": {
+      "chain": [
+        {
+          "model": "openai/gpt-6-luna#high"
+        },
+        {
+          "model": "claude-code/claude-haiku-5-5#high"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3-flash#high"
+        },
+        {
+          "model": "kimi-code-plan-cn/kimi-for-coding#high",
+          "request": {
+            "body": {
+              "thinking": {
+                "type": "disabled"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "frontend-engineer": {
+      "chain": [
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#low"
+        },
+        {
+          "model": "openai/gpt-6.1-sol#low"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#low"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3#low"
+        }
+      ]
+    },
+    "mobile-engineer": {
+      "chain": [
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#low"
+        },
+        {
+          "model": "openai/gpt-6.1-sol#low"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#low"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3#low"
+        }
+      ]
+    },
+    "pm-planner": {
+      "chain": [
+        {
+          "model": "openai/gpt-6.1-sol#medium"
+        },
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#medium"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#low"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3#low"
+        }
+      ]
+    },
+    "qa-reviewer": {
+      "chain": [
+        {
+          "model": "openai/gpt-6.1-sol#medium"
+        },
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#medium"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#high"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3#low"
+        }
+      ]
+    },
+    "refactor-engineer": {
+      "chain": [
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#low"
+        },
+        {
+          "model": "openai/gpt-6.1-sol#low"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#low"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3#low"
+        }
+      ]
+    },
+    "research-explorer": {
+      "chain": [
+        {
+          "model": "openai/gpt-6.1-sol#low"
+        },
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#low"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#low"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3-256k#low"
+        }
+      ]
+    },
+    "tf-infra-engineer": {
+      "chain": [
+        {
+          "model": "claude-code/claude-opus-5-5[1m]#high"
+        },
+        {
+          "model": "openai/gpt-6.1-sol#high"
+        },
+        {
+          "model": "zai-coding-plan/glm-5.3#high"
+        },
+        {
+          "model": "kimi-code-plan-cn/k3#high"
+        }
+      ]
+    }
+  }
+}

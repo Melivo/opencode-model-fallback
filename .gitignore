@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+node_modules/
+.serena/
+evidence/
+.env
+.env.*
+dist/
+.logs/
+.beads/
+.tmp/
+*.tsbuildinfo
+.playwright-mcp/
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
