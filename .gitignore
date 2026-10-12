@@ -3,6 +3,7 @@ __pycache__/
 node_modules/
 .serena/
 .opencode/
+.claude/
 evidence/
 .env
 .env.*
