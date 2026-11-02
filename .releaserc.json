@@ -49,7 +49,7 @@
       "@semantic-release/exec",
       {
         "prepareCmd": "bun run test:package --tarball release-artifacts/melivo-opencode-model-fallback-${nextRelease.version}.tgz && sha512sum release-artifacts/melivo-opencode-model-fallback-${nextRelease.version}.tgz > release-artifacts/tested.sha512",
-        "publishCmd": "test \"$(git ls-remote origin refs/heads/main | cut -f1)\" = \"$GITHUB_SHA\" && sha512sum --check release-artifacts/tested.sha512 && \"$RELEASE_NPM\" publish release-artifacts/melivo-opencode-model-fallback-${nextRelease.version}.tgz --access public --tag latest --registry https://registry.npmjs.org/ && bun scripts/prepare-release.ts --verify-registry ${nextRelease.version}"
+        "publishCmd": "test \"$(git ls-remote origin refs/heads/main | cut -f1)\" = \"$GITHUB_SHA\" && sha512sum --check release-artifacts/tested.sha512 && \"$RELEASE_NPM\" publish ./release-artifacts/melivo-opencode-model-fallback-${nextRelease.version}.tgz --access public --tag latest --registry https://registry.npmjs.org/ && bun scripts/prepare-release.ts --verify-registry ${nextRelease.version}"
       }
     ],
     [

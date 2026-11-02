@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { PassThrough } from "node:stream";
@@ -129,6 +130,26 @@ test("real npm prepare packs synchronized build output without registry authenti
   );
 });
 
+test("npm resolves the configured publish archive as a local file, not GitHub shorthand", () => {
+  const root = scratch();
+  const require = createRequire(import.meta.url);
+  const npmRequire = createRequire(require.resolve("npm/package.json"));
+  const npa = npmRequire("npm-package-arg");
+  const tarball = "release-artifacts/melivo-opencode-model-fallback-0.1.2.tgz";
+  mkdirSync(join(root, "release-artifacts"));
+  writeFileSync(join(root, tarball), "resolution fixture");
+  const ambiguous = npa(tarball, root);
+  expect(ambiguous.type).toBe("git");
+  expect(ambiguous.hosted.type).toBe("github");
+  expect(ambiguous.hosted.user).toBe("release-artifacts");
+  const command = config.plugins[4][1].publishCmd.replaceAll(`\${nextRelease.version}`, "0.1.2");
+  const argument = command.match(/ publish (\S+) --access /)?.[1];
+  expect(argument).toBeDefined();
+  const local = npa(argument, root);
+  expect(local.type).toBe("file");
+  expect(local.fetchSpec).toBe(join(root, tarball));
+});
+
 test("release plugin order retains one exact tested archive and no source commits/changelog", () => {
   expect(config.branches).toEqual(["main"]);
   expect(config.tagFormat).toBe(`melivo-v\${version}`);
@@ -150,7 +171,7 @@ test("release plugin order retains one exact tested archive and no source commit
     `bun run test:package --tarball ${tarball} && sha512sum ${tarball} > release-artifacts/tested.sha512`
   );
   expect(exec.publishCmd).toContain(
-    `"$RELEASE_NPM" publish ${tarball} --access public --tag latest`
+    `"$RELEASE_NPM" publish ./${tarball} --access public --tag latest`
   );
   expect(exec.publishCmd).toContain(
     'sha512sum --check release-artifacts/tested.sha512 && "$RELEASE_NPM" publish'

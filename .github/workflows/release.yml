@@ -54,25 +54,6 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun run build
-      # Remove this entire one-time step immediately after the successful 0.1.1 release.
-      - name: One-time 0.1.1 maintenance release for OIDC validation
-        shell: bash
-        run: |
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import { execFileSync } from "node:child_process";
-          import { readFileSync, writeFileSync } from "node:fs";
-          assert.equal(execFileSync("git", ["tag", "--list", "melivo-v0.1.1"], { encoding: "utf8" }).trim(), "", "0.1.1 tag already exists; inspect release state, do not retry");
-          const config = JSON.parse(readFileSync(".releaserc.json", "utf8"));
-          const exec = config.plugins.find(([name, options]) => name === "@semantic-release/exec" && options.prepareCmd === "bun scripts/prepare-release.ts ${nextRelease.version}")[1];
-          assert.equal(exec.analyzeCommitsCmd, undefined);
-          assert.equal(exec.verifyReleaseCmd, undefined);
-          assert.equal(exec.generateNotesCmd, undefined);
-          exec.analyzeCommitsCmd = 'test "${lastRelease.version}" = "0.1.0" && test "${lastRelease.gitTag}" = "melivo-v0.1.0" && tags=$(git tag --list melivo-v0.1.1) && test -z "$tags" && printf patch';
-          exec.verifyReleaseCmd = 'test "${nextRelease.version}" = "0.1.1"';
-          exec.generateNotesCmd = "printf '%s\n' 'Maintenance release to validate the first npm OIDC trusted-publishing run. No product bug fixes or feature changes.'";
-          writeFileSync(".releaserc.json", JSON.stringify(config, null, 2) + "\n");
-          NODE
       - name: Prepare, test exact archive, publish through OIDC
         run: bun run release
         env:
