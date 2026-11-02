@@ -57,7 +57,7 @@
       {
         "assets": [
           {
-            "path": "release-artifacts/melivo-opencode-model-fallback-${nextRelease.version}.tgz",
+            "path": "release-artifacts/melivo-opencode-model-fallback-*.tgz",
             "label": "Tested npm package"
           }
         ],

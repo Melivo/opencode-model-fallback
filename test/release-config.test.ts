@@ -128,6 +128,23 @@ test("real npm prepare packs synchronized build output without registry authenti
   expect(spawnSync("tar", ["-xOf", tarball, "package/built.js"], { encoding: "utf8" }).stdout).toBe(
     "// built fixture\n"
   );
+  const { default: globAssets } = await import(
+    new URL("./lib/glob-assets.js", import.meta.resolve("@semantic-release/github")).href
+  );
+  for (const file of ["registry-check.json", "tested.sha512", "other-package-0.2.0.tgz"])
+    writeFileSync(join(root, "release-artifacts", file), "not a release asset");
+  const literal = `release-artifacts/melivo-opencode-model-fallback-\${nextRelease.version}.tgz`;
+  const unresolved = await globAssets({ cwd: root, nextRelease: { version: "0.2.0" } }, [
+    { path: literal, label: "Tested npm package" },
+  ]);
+  expect(unresolved[0].path).toBe(literal);
+  expect(await Bun.file(join(root, unresolved[0].path)).exists()).toBe(false);
+  expect(await globAssets({ cwd: root }, config.plugins[5][1].assets)).toEqual([
+    {
+      path: "release-artifacts/melivo-opencode-model-fallback-0.2.0.tgz",
+      label: "Tested npm package",
+    },
+  ]);
 });
 
 test("npm resolves the configured publish archive as a local file, not GitHub shorthand", () => {
@@ -180,7 +197,12 @@ test("release plugin order retains one exact tested archive and no source commit
   expect(exec.publishCmd).toContain(`--verify-registry \${nextRelease.version}`);
   expect(exec.publishCmd).not.toMatch(/npm pack|npm publish \. /);
   expect(config.plugins[5][1]).toEqual({
-    assets: [{ path: tarball, label: "Tested npm package" }],
+    assets: [
+      {
+        path: "release-artifacts/melivo-opencode-model-fallback-*.tgz",
+        label: "Tested npm package",
+      },
+    ],
     successComment: false,
     failComment: false,
     failTitle: false,
