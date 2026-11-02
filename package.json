@@ -1,5 +1,5 @@
 {
-  "name": "@smart-coders-hq/opencode-model-fallback",
+  "name": "@melivo/opencode-model-fallback",
   "version": "0.1.0",
   "description": "OpenCode plugin for ordered model fallback chains, preemptive redirect, and automatic rate limit recovery.",
   "type": "module",
@@ -15,7 +15,10 @@
   "scripts": {
     "build": "bun build index.ts --outdir dist --target node --format esm --external @opencode-ai/plugin --external zod && bun build src/v2.ts --outfile dist/server.js --target node --format esm --external @opencode/plugin && tsc --emitDeclarationOnly",
     "derive:v2": "bun scripts/derive-v2-config.ts",
+    "check:v2": "bun scripts/derive-v2-config.ts --check",
+    "sync:v2:bases": "bun scripts/derive-v2-config.ts --sync-base",
     "test:v2:integration": "python3 scripts/integration-v2.py",
+    "test:package": "bun scripts/check-package.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "dev": "tsc --watch --noEmit",
@@ -27,24 +30,32 @@
   },
   "files": [
     "server.js",
-    "deployment",
-    "dist",
     "plugin.json",
-    "examples"
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/server.js",
+    "dist/src/**/*.d.ts",
+    "examples/model-fallback.v2.json"
   ],
   "peerDependencies": {
     "@opencode/plugin": ">=2.0.25 <3",
     "@opencode-ai/plugin": ">=1.2.0",
     "zod": ">=4.0.0"
   },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@biomejs/biome": "2.4.7",
     "@opencode-ai/plugin": "1.19.0",
     "@opencode/plugin": "2.0.25",
-    "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/exec": "^7.1.0",
-    "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^12.0.6",
     "@semantic-release/npm": "^13.1.5",
     "@semantic-release/release-notes-generator": "^14.1.0",
@@ -75,15 +86,19 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Smart-Coders-HQ/opencode-model-fallback.git"
+    "url": "git+https://github.com/Melivo/opencode-model-fallback.git"
   },
   "author": "Błażej Pawlak <blazej@smartcoders.xyz>",
-  "homepage": "https://github.com/Smart-Coders-HQ/opencode-model-fallback#readme",
+  "contributors": [
+    "Melivo (fork maintainer, https://github.com/Melivo)"
+  ],
+  "homepage": "https://github.com/Melivo/opencode-model-fallback#readme",
   "bugs": {
-    "url": "https://github.com/Smart-Coders-HQ/opencode-model-fallback/issues"
+    "url": "https://github.com/Melivo/opencode-model-fallback/issues"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "engines": {
     "node": ">=18.0.0"

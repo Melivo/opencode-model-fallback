@@ -2,23 +2,23 @@
 
 - Own the plugin runtime and the native OpenCode v2 server implementation.
 
-# Ownership
+## Ownership
 
 - Keep runtime behavior in the domain modules under `config`, `detection`, `resolution`, `state`, `replay`, `display`, `logging`, and `tools`.
 - Keep `v2.ts` as the native v2 server entry point; repository-level packaging and release policy stay at the root.
 
-# Local Contracts
+## Local Contracts
 
 - Preserve the separation between global model health and per-session fallback state.
 - Preserve the fallback and replay boundaries; changes to public configuration belong with schema and migration handling.
+- The native v2 server accepts `options.config` or `options.configPath`; without either it uses an empty chain map and never switches models. V2 chains name explicit subagent IDs only.
 
-# Work Guidance
+## Work Guidance
 
-
-# Verification
+## Verification
 
 - Run `bun test`, `bun run typecheck`, and `bun run build` for runtime changes.
 
-# Child DOX Index
+## Child DOX Index
 
 - No child DOX guides.

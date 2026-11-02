@@ -46,9 +46,7 @@ export function makeMockClient(opts: MockClientOptions = {}): {
     logs: [],
   };
 
-  const messages = opts.messages ?? [
-    makeUserMessage("s1", "m1", "openai", "gpt-5.3-codex"),
-  ];
+  const messages = opts.messages ?? [makeUserMessage("s1", "m1", "openai", "gpt-5.3-codex")];
   const session = opts.session ?? {};
 
   const client = {
@@ -63,10 +61,7 @@ export function makeMockClient(opts: MockClientOptions = {}): {
         calls.abort.push(options.path.id);
         return { data: {} };
       },
-      revert: async (options: {
-        path: { id: string };
-        body?: { messageID: string };
-      }) => {
+      revert: async (options: { path: { id: string }; body?: { messageID: string } }) => {
         if (opts.revertError) throw opts.revertError;
         calls.revert.push({
           sessionId: options.path.id,
@@ -122,7 +117,7 @@ export function makeUserMessage(
   providerID: string,
   modelID: string,
   agent = "coder",
-  textContent = "hello",
+  textContent = "hello"
 ): MockMessageEntry {
   const info: UserMessage = {
     id: messageId,

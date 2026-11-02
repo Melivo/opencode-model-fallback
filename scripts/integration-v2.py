@@ -1,13 +1,40 @@
 #!/usr/bin/env python3
 """Real OpenCode v2 integration; ALL provider responses are deterministic TEST DATA.
 No live config, credentials or paid providers. Private server + XDG isolation.
+
+Parameters keep three concerns apart: --plugin-package (plugin root the host
+loads; default: this checkout), --opencode-bin (exact absolute CLI binary;
+omitted = developer mode resolving `opencode` from PATH) and --evidence-dir
+(default: <repo>/evidence). ROOT stays the repository resource root only.
 """
 from typing import Any
-import base64, hashlib, http.server, json, os, pathlib, secrets, socket, subprocess, tempfile, threading, time, urllib.request
+import argparse, base64, hashlib, http.server, json, os, pathlib, secrets, shutil, socket, subprocess, tempfile, threading, time, urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-ARTIFACT = ROOT / 'evidence'
-ARTIFACT.mkdir(exist_ok=True)
-HOME = pathlib.Path(tempfile.mkdtemp(prefix='fallback-v2-', dir='/home/visimeos/.hermes/cache/scratch'))
+# Strict host environment allowlist: tokens, npm/provider credentials and CI
+# identity variables are never inherited. HOME/XDG/TMP are replaced below.
+SAFE_ENV_KEYS = ('PATH', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
+                 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT')
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--plugin-package', type=pathlib.Path, default=ROOT)
+parser.add_argument('--opencode-bin')
+parser.add_argument('--evidence-dir', type=pathlib.Path, default=ROOT / 'evidence')
+parser.add_argument('--scratch-root', type=pathlib.Path, help='parent of the private fixture root (default: system temp dir)')
+ARGS = parser.parse_args()
+PLUGIN_PACKAGE = ARGS.plugin_package.resolve(strict=True)
+if ARGS.opencode_bin is None:
+    found = shutil.which('opencode')
+    if not found: raise SystemExit('opencode not found; pass --opencode-bin <absolute path>')
+    OPENCODE_BIN = str(pathlib.Path(found).resolve())
+else:
+    if not os.path.isabs(ARGS.opencode_bin) or not os.access(ARGS.opencode_bin, os.X_OK):
+        raise SystemExit('--opencode-bin must be an absolute executable path')
+    OPENCODE_BIN = ARGS.opencode_bin
+ARTIFACT = ARGS.evidence_dir.resolve()
+ARTIFACT.mkdir(parents=True, exist_ok=True)
+SCRATCH = (ARGS.scratch_root or pathlib.Path(tempfile.gettempdir())).resolve()
+SCRATCH.mkdir(parents=True, exist_ok=True)
+HOME = pathlib.Path(tempfile.mkdtemp(prefix='fallback-v2-', dir=SCRATCH))
+for private in ('home', 'tmp'): (HOME / private).mkdir()
 PROJECT = HOME / 'project'
 PROJECT.mkdir()
 CONFIG = HOME / 'config/opencode'
@@ -57,7 +84,7 @@ cycle_chains = {name: [{'model':f'fixture-one/{name}-a#high'},
     {'model':f'fixture-two/{name}-b#low','request':{'body':{'thinking':{'type':'disabled'}}}}] for name in ['wrap','bound','cold']}
 plugin_config = {'version':2,'cooldownMs':10000,'maxCycles':5,'agents':{'worker':{'chain':chain},'cascade':{'chain':chain},
     **{name:{'chain':steps} for name,steps in cycle_chains.items()}}}
-config = {'plugins':[{'package':str(ROOT), 'options':{'config':plugin_config}}],
+config = {'plugins':[{'package':str(PLUGIN_PACKAGE), 'options':{'config':plugin_config}}],
     'agents':{'fixture-parent':{'mode':'primary','model':'fixture-one/parent','system':'TEST DATA: use the deterministic fixture tools','permissions':[{'action':'*','resource':'*','effect':'deny'},{'action':'subagent','resource':'*','effect':'allow'}]},
               **{a:{'mode':'subagent','model':'fixture-one/a#high','system':'TEST DATA child','permissions':[{'action':'*','resource':'*','effect':'deny'}]} for a in ['worker','cascade']},
               **{a:{'mode':'subagent','model':steps[0]['model'],'system':'TEST DATA bounded cycle child','permissions':[{'action':'*','resource':'*','effect':'deny'}]} for a,steps in cycle_chains.items()}},
@@ -67,8 +94,8 @@ for name in cycle_chains:
     config['providers']['fixture-two']['models'][name+'-b'] = model('low')
 (CONFIG/'opencode.json').write_text(json.dumps(config))
 password = secrets.token_urlsafe(24)  # ephemeral TEST server password, never printed or persisted
-ENV = {k:v for k,v in os.environ.items() if k != 'HOME' and not k.startswith(('OPENCODE_', 'XDG_')) and not any(x in k.upper() for x in ['API_KEY','TOKEN','SECRET','PASSWORD'])}
-ENV.update({'HOME':str(HOME/'home'),'OPENCODE_TEST_HOME':str(HOME/'home'), 'OPENCODE_CONFIG_DIR':str(CONFIG), 'XDG_CONFIG_HOME':str(HOME/'config'), 'XDG_DATA_HOME':str(HOME/'data'), 'XDG_CACHE_HOME':str(HOME/'cache'), 'XDG_STATE_HOME':str(HOME/'state'), 'OPENCODE_PASSWORD':password, 'OPENCODE_DISABLE_PROJECT_CONFIG':'1'})
+ENV = {k: os.environ[k] for k in SAFE_ENV_KEYS if k in os.environ}
+ENV.update({'TMPDIR':str(HOME/'tmp'), 'TEMP':str(HOME/'tmp'), 'TMP':str(HOME/'tmp'), 'HOME':str(HOME/'home'),'OPENCODE_TEST_HOME':str(HOME/'home'), 'OPENCODE_CONFIG_DIR':str(CONFIG), 'XDG_CONFIG_HOME':str(HOME/'config'), 'XDG_DATA_HOME':str(HOME/'data'), 'XDG_CACHE_HOME':str(HOME/'cache'), 'XDG_STATE_HOME':str(HOME/'state'), 'OPENCODE_PASSWORD':password, 'OPENCODE_CONFIG_PROJECT_DISABLE':'true', 'OPENCODE_DISABLE_PROJECT_CONFIG':'1'})
 with socket.socket() as s: s.bind(('127.0.0.1',0)); server_port = s.getsockname()[1]
 url = f'http://127.0.0.1:{server_port}'
 header = {'Authorization':'Basic '+base64.b64encode(('opencode:'+password).encode()).decode(), 'Content-Type':'application/json'}
@@ -78,7 +105,7 @@ def api(path, data=None, timeout=60) -> Any:
         raw = r.read()
         return json.loads(raw) if raw else None
 log = open(ARTIFACT/'v2-server.log','w')
-proc = subprocess.Popen(['opencode','serve','--hostname','127.0.0.1','--port',str(server_port)],cwd=PROJECT,env=ENV,stdout=log,stderr=log)
+proc = subprocess.Popen([OPENCODE_BIN,'serve','--hostname','127.0.0.1','--port',str(server_port)],cwd=PROJECT,env=ENV,stdout=log,stderr=log)
 try:
     for _ in range(150):
         try: info = api('/api/info',timeout=1); break
@@ -88,7 +115,7 @@ try:
     else: raise RuntimeError('private server never became ready')
     sources = api('/api/config?location%5Bdirectory%5D='+str(PROJECT))
     (ARTIFACT/'v2-isolated-sources.json').write_text(json.dumps(sources,indent=2))
-    assert not any(x.get('path','').startswith('/home/visimeos/.config/opencode') for x in sources), 'LIVE CONFIG LEAK'
+    assert all(not x.get('path') or pathlib.Path(x['path']).is_relative_to(HOME) for x in sources), 'CONFIG SOURCE OUTSIDE PRIVATE FIXTURE ROOT'
     assert any(x.get('path') == str(CONFIG/'opencode.json') for x in sources), 'fixture config not discovered'
     plugins = api('/api/plugin?location%5Bdirectory%5D='+str(PROJECT))
     (ARTIFACT/'v2-plugin-inventory.json').write_text(json.dumps(plugins,indent=2))
@@ -127,6 +154,9 @@ try:
     plugins = api('/api/plugin?location%5Bdirectory%5D='+str(PROJECT))
     (ARTIFACT/'v2-plugin-inventory.json').write_text(json.dumps(plugins,indent=2))
     assert any(p['id'] == 'smart-coders.model-fallback.v2-local' and p['state']['status'] == 'active' for p in plugins['data']), 'plugin not active in private test server'
+    plugin_entry = next(p for p in plugins['data'] if p['id'] == 'smart-coders.model-fallback.v2-local')
+    if PLUGIN_PACKAGE != ROOT:
+        assert str(ROOT) not in json.dumps(plugin_entry), 'installed plugin resolved from the checkout'
     a = [r for r in requests if r['body']['model'] == 'a']
     b = [r for r in requests if r['body']['model'] == 'b']
     c = [r for r in requests if r['body']['model'] == 'c']
@@ -134,7 +164,7 @@ try:
     assert len(b) == 3 and len(c) == 1, f'unexpected request counts b={len(b)}, c={len(c)}'
     assert all(r['body'].get('fixture_variant') == 'low' and r['body'].get('thinking') == {'type':'disabled'} for r in b), 'fallback variant/override missing'
     assert c[0]['body'].get('fixture_variant') == 'medium' and 'thinking' not in c[0]['body'], 'override leaked into next provider'
-    summary = {'opencode':subprocess.check_output(['opencode','--version'],text=True).strip(),'isolation_verified':True,'children_completed':len(children),'parent_continued':True,'parent_model_preserved':True,'primary_requests':len(a),'fallback1_requests':len(b),'fallback2_requests':len(c),'variants_and_overrides_verified':True,'cycle_sequences':cycle,'maxCycles':5,'fixture_home':str(HOME),'test_data_only':True}
+    summary = {'opencode':subprocess.check_output([OPENCODE_BIN,'--version'],text=True,env=ENV).strip(),'opencode_bin':OPENCODE_BIN,'plugin_package':str(PLUGIN_PACKAGE),'plugin_source':plugin_entry.get('source'),'isolation_verified':True,'children_completed':len(children),'parent_continued':True,'parent_model_preserved':True,'primary_requests':len(a),'fallback1_requests':len(b),'fallback2_requests':len(c),'variants_and_overrides_verified':True,'cycle_sequences':cycle,'maxCycles':5,'fixture_home':str(HOME),'test_data_only':True}
     (ARTIFACT/'v2-integration-result.json').write_text(json.dumps(summary,indent=2))
     print(json.dumps(summary,indent=2))
 finally:
@@ -142,7 +172,7 @@ finally:
     proc.terminate()
     try: proc.wait(timeout=10)
     except subprocess.TimeoutExpired: proc.kill(); proc.wait()
-    log.close(); fixture.shutdown()
+    log.close(); fixture.shutdown(); fixture.server_close()
     native_log = HOME/'data/opencode/log/opencode.log'
     if native_log.exists():
         (ARTIFACT/'v2-native-runtime.log').write_bytes(native_log.read_bytes())

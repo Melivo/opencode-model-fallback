@@ -1,22 +1,72 @@
 {
   "branches": ["main"],
-  "tagFormat": "v${version}",
+  "tagFormat": "melivo-v${version}",
   "plugins": [
-    "@semantic-release/commit-analyzer",
-    "@semantic-release/release-notes-generator",
-    "@semantic-release/changelog",
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "angular",
+        "releaseRules": [
+          {
+            "breaking": true,
+            "release": "minor"
+          },
+          {
+            "type": "feat",
+            "release": "minor"
+          },
+          {
+            "type": "fix",
+            "release": "patch"
+          },
+          {
+            "type": "perf",
+            "release": "patch"
+          }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "angular"
+      }
+    ],
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "node -e \"const fs=require('fs');const p=JSON.parse(fs.readFileSync('plugin.json','utf8'));p.version='${nextRelease.version}';fs.writeFileSync('plugin.json',JSON.stringify(p,null,2)+'\\n')\""
+        "prepareCmd": "bun scripts/prepare-release.ts ${nextRelease.version}"
       }
     ],
     [
       "@semantic-release/npm",
       {
-        "npmPublish": true
+        "npmPublish": false,
+        "tarballDir": "release-artifacts"
       }
     ],
-    "@semantic-release/github"
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "bun run test:package --tarball release-artifacts/melivo-opencode-model-fallback-${nextRelease.version}.tgz && sha512sum release-artifacts/melivo-opencode-model-fallback-${nextRelease.version}.tgz > release-artifacts/tested.sha512",
+        "publishCmd": "test \"$(git ls-remote origin refs/heads/main | cut -f1)\" = \"$GITHUB_SHA\" && sha512sum --check release-artifacts/tested.sha512 && \"$RELEASE_NPM\" publish release-artifacts/melivo-opencode-model-fallback-${nextRelease.version}.tgz --access public --tag latest --registry https://registry.npmjs.org/ && bun scripts/prepare-release.ts --verify-registry ${nextRelease.version}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          {
+            "path": "release-artifacts/melivo-opencode-model-fallback-${nextRelease.version}.tgz",
+            "label": "Tested npm package"
+          }
+        ],
+        "successComment": false,
+        "failComment": false,
+        "failTitle": false,
+        "labels": false,
+        "releasedLabels": false
+      }
+    ]
   ]
 }

@@ -1,6 +1,6 @@
 # Lokaler v2-Fork: Aktivierung und Nachweise
 
-**Aktiviert und verifiziert.** Der lokale Verzeichnis-Eintrag wurde an das globale `plugins`-Array angehängt und `opencode reload` ausgeführt. Die Live-API `/api/plugin` bestätigt `smart-coders.model-fallback.v2-local` mit `state.status: active` und dem lokalen `server.js`-Pfad. Die übergeordnete Instanz hat alle 179 Tests, Typecheck und die private v2-Integration erneut erfolgreich ausgeführt; alle 48 Agentdateien sind laut Quellhash unverändert.
+**Historischer Aktivierungsnachweis:** Der lokale Plugin-Eintrag wurde ursprünglich geladen und per `/api/plugin` als aktiv bestätigt. Die aktuelle JSON-SSOT-Migration ändert die gespeicherte Wartung, nicht den laufenden Server: kein Reload ausgeführt, erneutes Laden erfolgt ausschließlich durch den Benutzer. Aktuelle Prüfungen und Sicherung: `evidence/json-ssot-migration.json`; ältere Nachweise unten sind historisch.
 
 ## Dauerhafte Artefakte
 
@@ -8,8 +8,8 @@ Basisverzeichnis: `/home/visimeos/.config/opencode/local-plugins/model-fallback`
 
 - `server.js`: v2-Verzeichnis-Einstieg; exportiert `dist/server.js`.
 - `dist/server.js`: gebauter v2-Plugin-Code, SDK `@opencode/plugin@2.0.25` wird vom Host bereitgestellt.
-- `deployment/model-fallback.v2.json`: exakt 12 Rollen mit jeweils Primärmodell und drei Fallbackschritten; aus den bestehenden 48 Agentdateien abgeleitet.
-- `deployment/agent-source-sha256.json`: Quellhashes zur Prüfung unveränderter Prompts/Berechtigungen.
+- `deployment/model-fallback.v2.json`: einzige Autorität; exakt 12 Rollen mit jeweils Primärmodell und drei vollständigen Fallbackschritten. Keine Ableitung aus Agentdateien.
+- `deployment/base-agent-sha256.json`: eingefrorene Quellhashes der zwölf erhaltenen Basisprofile; die 36 callable Fallbackprofile wurden gesichert und entfernt.
 - `deployment/activation.snippet.json`: einzufügender Plugin-Eintrag.
 - `src/v2.ts`: v2-Implementierung. Legacy-Code und seine Tests bleiben separat erhalten.
 
@@ -55,7 +55,7 @@ bun run test:v2:integration
 
 ## Verhalten und Grenzen
 
-Nur konfigurierte Basisrollen in `mode: subagent` **und** mit Parent-Session sind betroffen. Keine Wildcards, kein Fallback für Primary-/Root-Sessions. Der Agent wird nie gewechselt: ursprünglicher Prompt und Berechtigungen bleiben wirksam. Die Fallbackdateien liefern Modell, Variante und optional `request.body`, nicht neue Prompts/Berechtigungen.
+Nur konfigurierte Basisrollen in `mode: subagent` **und** mit Parent-Session sind betroffen. Keine Wildcards, kein Fallback für Primary-/Root-Sessions. Der Agent wird nie gewechselt: ursprünglicher Prompt und Berechtigungen bleiben wirksam. Die kanonische JSON liefert Modell, Variante und optional `request.body`, nicht neue Prompts/Berechtigungen. Callable Fallbackdateien sind weder Runtime- noch Wartungsabhängigkeiten.
 
 Der v2-Retry-Hook wechselt das Modell derselben laufenden Child-Session und setzt die Retry-Verzögerung auf null. Der native Job bleibt Eigentümer des Ergebnisses. Kein Abort/Revert/Prompt-Replay. Bereits bekannte Ausfälle werden im Prompt-Hook übersprungen; Erschöpfung beendet weitere Retries. Health ist pro Plugin-/Location-Instanz geteilt und wird beim Neustart verworfen; keine automatische Rückkehr mitten in einer Session.
 

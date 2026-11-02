@@ -94,13 +94,23 @@ export function validateV2Step(step: V2Step): V2Step {
     if (value === null || ["string", "boolean"].includes(typeof value)) return true;
     if (typeof value === "number") return Number.isFinite(value);
     if (Array.isArray(value)) return value.every(safe);
-    return record(value) && Object.entries(value).every(([key, v]) =>
-      !["__proto__", "constructor", "prototype"].includes(key) && safe(v));
+    return (
+      record(value) &&
+      Object.entries(value).every(
+        ([key, v]) => !["__proto__", "constructor", "prototype"].includes(key) && safe(v)
+      )
+    );
   };
   if (step.request !== undefined) {
-    if (!record(step.request) || Object.keys(step.request).some(k => k !== "body") ||
-        !record(step.request.body) || !safe(step.request.body) ||
-        Object.keys(step.request.body).some(k => ["model", "messages", "tools", "stream", "input", "instructions"].includes(k))) {
+    if (
+      !record(step.request) ||
+      Object.keys(step.request).some((k) => k !== "body") ||
+      !record(step.request.body) ||
+      !safe(step.request.body) ||
+      Object.keys(step.request.body).some((k) =>
+        ["model", "messages", "tools", "stream", "input", "instructions"].includes(k)
+      )
+    ) {
       throw new Error("Invalid or unsafe request.body override");
     }
   }

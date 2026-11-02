@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "cooldownMs": 300000,
+  "maxCycles": 1,
+  "agents": {
+    "example-subagent": {
+      "chain": [
+        { "model": "example-provider/primary-model#high" },
+        {
+          "model": "other-provider/fallback-model#low",
+          "request": { "body": { "thinking": { "type": "disabled" } } }
+        }
+      ]
+    }
+  }
+}

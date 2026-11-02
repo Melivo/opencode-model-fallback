@@ -1,3 +1,5 @@
+# OpenCode Model Fallback
+
 <!-- CORE-INIT-PROJECT:START -->
 ## Projekt: OpenCode Model Fallback
 
@@ -41,7 +43,7 @@ SOFTWARE.
 -->
 
 <!-- DOX:START -->
-# DOX framework
+## DOX framework
 
 - DOX is highly performant AGENTS.md hierarchy installed here
 - Agent must follow DOX instructions across any edits
@@ -91,6 +93,7 @@ Update parent docs when parent-level structure, ownership, workflow, or child in
 - Verification must reflect an existing check; if no verification framework exists yet, leave it empty and update it when one exists
 
 Default section order:
+
 - Purpose
 - Ownership
 - Local Contracts
@@ -126,4 +129,11 @@ When the user requests a durable behavior change, record it here or in the relev
 - [src/AGENTS.md](src/AGENTS.md) — Plugin runtime and native v2 implementation.
 - [test/AGENTS.md](test/AGENTS.md) — Unit and behavior tests.
 - [scripts/AGENTS.md](scripts/AGENTS.md) — Maintenance and integration scripts.
+- [.github/AGENTS.md](.github/AGENTS.md) — CI and release boundary: workflows, permissions, locked OIDC publishing.
 <!-- DOX:END -->
+
+## Release and CI Boundary
+
+- Release ownership, permissions, and the publishing gate are defined in [.github/AGENTS.md](.github/AGENTS.md); the operator-facing release, bootstrap, and recovery procedure is in [docs/releases.md](docs/releases.md).
+- Publishing is locked until repository variable `RELEASE_ENABLED` is `true`. Local configuration, builds, and package tests never publish or activate the plugin.
+- npm publishing uses OIDC trusted publishing for CI releases; the documented first-release bootstrap is interactive and uses a short-lived local npm CLI session, never a stored npm token.
