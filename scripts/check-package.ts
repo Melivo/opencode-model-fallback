@@ -148,7 +148,8 @@ function run(
   args: string[],
   options: { cwd: string; env: Record<string, string>; timeout?: number; capture?: boolean }
 ): string {
-  const result = spawnSync(command, args, {
+  const executable = command === "npm" ? process.env.RELEASE_NPM || command : command;
+  const result = spawnSync(executable, args, {
     cwd: options.cwd,
     env: options.env,
     encoding: "utf8",

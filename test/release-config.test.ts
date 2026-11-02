@@ -76,6 +76,21 @@ test("prepare synchronizes only temporary manifests, builds after both, and fail
   expect(JSON.parse(readFileSync(join(ROOT, "plugin.json"), "utf8")).version).toBe("0.1.0");
 });
 
+test("package helper uses the explicitly pinned npm even when PATH contains another", () => {
+  const root = scratch();
+  const pinned = join(root, "pinned-npm");
+  const marker = join(root, "used-pinned");
+  writeFileSync(pinned, `#!/bin/sh\necho used > "${marker}"\nexit 42\n`, { mode: 0o755 });
+  const result = spawnSync("bun", ["scripts/check-package.ts", "--registry-version", "0.1.0"], {
+    cwd: ROOT,
+    env: safeEnv(process.env, { RELEASE_NPM: pinned }),
+    encoding: "utf8",
+    timeout: 30000,
+  });
+  expect(result.status).not.toBe(0);
+  expect(readFileSync(marker, "utf8").trim()).toBe("used");
+});
+
 test("real npm prepare packs synchronized build output without registry authentication", async () => {
   const root = scratch();
   const npmrc = join(root, "npmrc");
@@ -206,8 +221,11 @@ test("YAML gates: PR read-only, locked origin/main releases, pinned tools and no
           expect(step.with["no-cache"]).toBe(true);
         }
       }
+      const npmPin = entry.steps.find((s: any) => s.name === "Pin npm with OIDC support");
+      expect(npmPin.run).toContain('test "$(npm --version)" = "11.20.0"');
+      expect(npmPin.run).toContain('echo "RELEASE_NPM=$(command -v npm)" >> "$GITHUB_ENV"');
       for (const command of [
-        "npm install --global npm@11.19.1",
+        "npm install --global npm@11.20.0",
         "bun install --frozen-lockfile",
         "bun test",
         "bun run typecheck",
