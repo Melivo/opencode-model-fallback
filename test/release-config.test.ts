@@ -211,6 +211,54 @@ test("release plugin order retains one exact tested archive and no source commit
   });
 });
 
+test("GitHub asset upload works through the real Octokit chain on the Node runtime", () => {
+  // Regression: userland undici 7.24.4 fetch emitted `content-length: "N, N"`, which the Node 24.22.2
+  // built-in dispatcher rejected ("invalid content-length header") after the tag and release existed.
+  const lib = new URL("./lib/octokit.js", import.meta.resolve("@semantic-release/github")).href;
+  const script = `
+    import http from "node:http";
+    const { SemanticReleaseOctokit, toOctokitOptions } = await import(${JSON.stringify(lib)});
+    const seen = [];
+    const server = http.createServer((req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(chunk));
+      req.on("end", () => {
+        seen.push({ cl: req.headers["content-length"], bytes: Buffer.concat(chunks).length });
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ browser_download_url: "http://localhost/asset" }));
+      });
+    });
+    await new Promise((done) => server.listen(0, "127.0.0.1", done));
+    const base = "http://127.0.0.1:" + server.address().port;
+    const options = toOctokitOptions({ githubToken: "test-token", githubApiUrl: base, proxy: false });
+    const octokit = new SemanticReleaseOctokit({ ...options, retry: { enabled: false }, throttle: { enabled: false } });
+    const data = Buffer.alloc(64574, 1);
+    try {
+      await octokit.request({
+        method: "POST",
+        url: base + "/repos/o/r/releases/1/assets{?name,label}",
+        data,
+        name: "asset.tgz",
+        label: "Tested npm package",
+        headers: { "content-type": "text/plain", "content-length": data.length },
+      });
+      console.log(JSON.stringify(seen));
+    } finally {
+      server.close();
+    }
+  `;
+  const result = spawnSync("node", ["--input-type=module", "-e", script], {
+    cwd: ROOT,
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  expect(result.stderr).not.toContain("invalid content-length header");
+  expect(result.status).toBe(0);
+  expect(JSON.parse(result.stdout.trim())).toEqual([{ cl: "64574", bytes: 64574 }]);
+  const packageJson = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+  expect(packageJson.devDependencies.undici).toBe("7.30.1");
+});
+
 test("YAML gates: PR read-only, locked origin/main releases, pinned tools and no caches/auth placeholder", () => {
   expect(ci.on).toEqual({ pull_request: null, push: { branches: ["main"] } });
   expect(release.on).toEqual({ push: { branches: ["main"] }, workflow_dispatch: null });
