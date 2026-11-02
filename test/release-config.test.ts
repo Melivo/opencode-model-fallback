@@ -360,19 +360,36 @@ test("registry digest readback retries bounded propagation and rejects mismatche
     root,
     "0.2.0",
     async () => {
-      if (++reads < 3) throw new Error("not propagated");
+      if (++reads < 8) throw new Error("not propagated");
       return dist;
     },
     wait
   );
-  expect(reads).toBe(3);
-  expect(waits).toBe(2);
+  expect(reads).toBe(8);
+  expect(waits).toBe(7);
   expect(
     JSON.parse(readFileSync(join(root, "release-artifacts/registry-check.json"), "utf8")).verified
   ).toBe(true);
-  await expect(
-    verifyRegistry(root, "0.2.0", async () => ({ ...dist, shasum: "wrong" }), wait)
-  ).rejects.toThrow("mismatch");
+  for (const mismatch of [
+    { ...dist, shasum: "wrong" },
+    { ...dist, integrity: "wrong" },
+  ]) {
+    reads = 0;
+    waits = 0;
+    await expect(
+      verifyRegistry(
+        root,
+        "0.2.0",
+        async () => {
+          reads++;
+          return mismatch;
+        },
+        wait
+      )
+    ).rejects.toThrow("mismatch");
+    expect(reads).toBe(1);
+    expect(waits).toBe(0);
+  }
   reads = 0;
   waits = 0;
   await expect(
@@ -386,6 +403,6 @@ test("registry digest readback retries bounded propagation and rejects mismatche
       wait
     )
   ).rejects.toThrow("exhausted");
-  expect(reads).toBe(6);
-  expect(waits).toBe(5);
+  expect(reads).toBe(31);
+  expect(waits).toBe(30);
 });

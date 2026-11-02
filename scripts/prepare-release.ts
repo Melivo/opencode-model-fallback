@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 
 const REGISTRY = "https://registry.npmjs.org";
 const PACKAGE = "@melivo/opencode-model-fallback";
-const PROPAGATION_ATTEMPTS = 6;
+const PROPAGATION_ATTEMPTS = 31;
 const PROPAGATION_DELAY_MS = 10_000;
 
 function releaseVersion(version: string): void {
