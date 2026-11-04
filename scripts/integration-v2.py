@@ -221,8 +221,22 @@ try:
     (ARTIFACT/'v2-isolated-sources.json').write_text(json.dumps(sources,indent=2))
     assert all(not x.get('path') or pathlib.Path(x['path']).is_relative_to(HOME) for x in sources), 'CONFIG SOURCE OUTSIDE PRIVATE FIXTURE ROOT'
     assert any(x.get('path') == str(CONFIG/'opencode.json') for x in sources), 'fixture config not discovered'
-    plugins = api('/api/plugin?location%5Bdirectory%5D='+str(PROJECT))
-    (ARTIFACT/'v2-plugin-inventory.json').write_text(json.dumps(plugins,indent=2))
+    # Older hosts expose registry inventories while activation is still running.
+    # Wait only for the three expected fixture plugins, before ANY prompt; the
+    # strict environment/provider/config isolation gate below stays unchanged.
+    expected_plugins = {'fixture.observer','fixture.after','smart-coders.model-fallback.v2-local'}
+    activation_deadline = time.monotonic() + 30
+    while True:
+        plugins = api('/api/plugin?location%5Bdirectory%5D='+str(PROJECT), timeout=5)
+        (ARTIFACT/'v2-plugin-inventory.json').write_text(json.dumps(plugins,indent=2))
+        external = [p for p in plugins['data'] if p['source']['type'] != 'builtin']
+        assert {p['id'] for p in external} <= expected_plugins, 'UNEXPECTED FIXTURE PLUGIN'
+        assert not any(p['state']['status'] == 'error' for p in external), plugins
+        if {p['id'] for p in external} == expected_plugins and all(p['state']['status'] == 'active' for p in plugins['data']):
+            break
+        if time.monotonic() >= activation_deadline:
+            raise RuntimeError('Fixture plugin activation did not complete within 30 seconds: '+json.dumps(plugins))
+        time.sleep(.1)
     # This gate runs before EVERY prompt, from the actual native APIs and child
     # process environment, not from assumed input configuration alone.
     isolation_checks = []
