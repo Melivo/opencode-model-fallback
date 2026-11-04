@@ -53,6 +53,264 @@ async function harness(ready = true, settings = config) {
   return { hooks, child, changes, ctx };
 }
 
+test("v2 general transform projects only canonical model for effective subagent and disposes", async () => {
+  const plugin = (await import("../src/v2")).default;
+  for (const mode of ["subagent", "primary", "all", undefined]) {
+    const original: any =
+      mode === undefined
+        ? undefined
+        : {
+            id: "general",
+            name: "General",
+            mode,
+            model: { providerID: "old", id: "model" },
+            system: "Exact builtin prompt",
+            description: "Builtin capabilities",
+            hidden: false,
+            permissions: [{ action: "*", resource: "*", effect: "allow" }],
+            request: { settings: { custom: true }, headers: {}, body: {} },
+            steps: 42,
+            futureField: { preserved: true },
+          };
+    const agent = structuredClone(original);
+    const others = { id: "explore", mode: "subagent", system: "Unrelated" };
+    let transform: Function | undefined;
+    let disposed = 0;
+    const ctx: any = {
+      options: { config: { ...config, agents: { general: config.agents.worker } } },
+      agent: {
+        transform: async (fn: Function) => {
+          transform = fn;
+          return {
+            dispose: async () => {
+              disposed++;
+            },
+          };
+        },
+      },
+      session: { hook: async () => ({ dispose: async () => {} }) },
+    };
+    const dispose = await plugin.setup(ctx);
+    // Effective definitions become available only when the native transform runs.
+    transform!({
+      get: (id: string) => (id === "general" ? agent : others),
+      update: (id: string, update: Function) => {
+        expect(id).toBe("general");
+        update(agent);
+      },
+    });
+    expect(agent).toEqual(
+      mode === "subagent"
+        ? { ...original, model: { providerID: "mock", id: "a", variant: "high" } }
+        : original
+    );
+    expect(others).toEqual({ id: "explore", mode: "subagent", system: "Unrelated" });
+    await (dispose as Function)();
+    expect(disposed).toBe(1);
+  }
+});
+
+const claudeEnvelope = {
+  error: {
+    message: JSON.stringify({
+      type: "error",
+      error: {
+        type: "server_error",
+        code: "server_error",
+        message: "You've hit your 5-hour limit …",
+      },
+    }),
+    type: "error",
+    code: "claude_session_limit",
+  },
+};
+
+test("v2 original Claude SSE envelope survives native provider.internal retry", async () => {
+  const h = await harness();
+  const event: any = {
+    sessionID: h.child.id,
+    agent: "worker",
+    model: structuredClone(h.child.model),
+    attempt: 2,
+    error: {
+      type: "provider.internal",
+      message: claudeEnvelope.error.message,
+      response: { body: JSON.stringify(claudeEnvelope) },
+    },
+    decision: { retry: true, delay: 2000 },
+  };
+  await h.hooks.retry(event);
+  expect(h.changes).toEqual([
+    { sessionID: "ses_child", model: { providerID: "mock", id: "b", variant: "low" } },
+  ]);
+  expect(event.decision).toEqual({ retry: true, delay: 0 });
+  expect(h.child.id).toBe("ses_child");
+  expect(h.child.parentID).toBe("ses_parent");
+  expect(h.child.agent).toBe("worker");
+});
+
+test("v2 bounded provider normalization accepts known envelopes and preserves ordinary retries", async () => {
+  const cases = [
+    {
+      error: {
+        type: "provider.internal",
+        message: "ordinary failure",
+        response: { body: JSON.stringify(claudeEnvelope) },
+      },
+      switches: true,
+    },
+    {
+      error: {
+        type: "provider.internal",
+        message: "ordinary failure",
+        response: {
+          body:
+            '{"error":{"code":"claude_session_limit"},"ignored":' +
+            "[".repeat(9) +
+            "0" +
+            "]".repeat(9) +
+            "}",
+        },
+      },
+      switches: false,
+    },
+    {
+      error: { type: "provider.internal", message: JSON.stringify(claudeEnvelope) },
+      switches: true,
+    },
+    { error: { type: "provider.internal", message: claudeEnvelope.error.message }, switches: true },
+    {
+      error: { type: "provider.internal", message: "ordinary failure", status: 429 },
+      switches: true,
+    },
+    {
+      error: { type: "provider.internal", message: "internal server error", status: 503 },
+      switches: true,
+    },
+    { error: { type: "provider.internal", message: "request timeout" }, switches: true },
+    { error: { type: "provider.internal", message: "overloaded" }, switches: true },
+    { error: { type: "provider.internal", message: "ordinary failure" }, switches: false },
+    {
+      error: {
+        type: "server_error",
+        message: JSON.stringify({ error: { code: "server_error", message: "ordinary failure" } }),
+      },
+      switches: false,
+    },
+    {
+      error: { type: "provider.internal", message: '{"code":"claude_session_limit"' },
+      switches: false,
+    },
+    {
+      error: {
+        type: "provider.internal",
+        message: "ordinary failure",
+        response: { body: '{"code":"claude_session_limit"' },
+      },
+      switches: false,
+    },
+    {
+      error: {
+        type: "provider.internal",
+        message: JSON.stringify({
+          ignored: { code: "claude_session_limit", message: "rate limit" },
+        }),
+      },
+      switches: false,
+    },
+    {
+      error: {
+        type: "provider.internal",
+        message: JSON.stringify({ error: { code: "unknown", message: "ordinary failure" } }),
+      },
+      switches: false,
+    },
+    {
+      error: {
+        type: "provider.internal",
+        message: JSON.stringify({
+          error: { code: "claude_session_limit" },
+          padding: "x".repeat(16384),
+        }),
+      },
+      switches: false,
+    },
+    {
+      error: {
+        type: "provider.internal",
+        message: "ordinary failure",
+        response: {
+          body: JSON.stringify({
+            error: { code: "claude_session_limit" },
+            padding: "x".repeat(16384),
+          }),
+        },
+      },
+      switches: false,
+    },
+    {
+      error: {
+        type: "provider.internal",
+        message:
+          '{"error":{"code":"claude_session_limit"},"ignored":' +
+          "[".repeat(9) +
+          "0" +
+          "]".repeat(9) +
+          "}",
+      },
+      switches: false,
+    },
+    {
+      error: {
+        type: "provider.internal",
+        message: JSON.stringify([{ code: "claude_session_limit" }]),
+      },
+      switches: false,
+    },
+    {
+      error: {
+        type: "provider.internal",
+        message: JSON.stringify({ error: { code: 429, message: null } }),
+      },
+      switches: false,
+    },
+  ];
+  for (const fixture of cases) {
+    const h = await harness();
+    const event: any = {
+      sessionID: h.child.id,
+      agent: "worker",
+      model: structuredClone(h.child.model),
+      attempt: 2,
+      error: fixture.error,
+      decision: { retry: true, delay: 2000 },
+    };
+    await h.hooks.retry(event);
+    expect(h.changes.length).toBe(fixture.switches ? 1 : 0);
+    expect(event.decision).toEqual({ retry: true, delay: fixture.switches ? 0 : 2000 });
+  }
+});
+
+test("v2 structured Claude code takes priority over incidental message categories", async () => {
+  const { classifyProviderError } = await import("../src/detection/provider-error");
+  expect(
+    classifyProviderError({
+      message: "timeout",
+      status: 429,
+      response: { body: JSON.stringify(claudeEnvelope) },
+    })
+  ).toBe("quota_exceeded");
+  expect(classifyProviderError({ message: "ordinary failure", status: 429 })).toBe("rate_limit");
+  expect(
+    classifyProviderError({
+      message: JSON.stringify({ error: { code: "server_error", message: "ordinary failure" } }),
+    })
+  ).toBe("unknown");
+  let nested = JSON.stringify({ code: "claude_session_limit" });
+  for (let i = 0; i < 6; i++) nested = JSON.stringify({ message: nested });
+  expect(classifyProviderError({ message: nested })).toBe("unknown");
+});
+
 async function failCurrent(h: Awaited<ReturnType<typeof harness>>, attempt = 2) {
   const event: any = {
     sessionID: h.child.id,

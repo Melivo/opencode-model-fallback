@@ -1,8 +1,10 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseV2Agent, type V2Step, validateV2Step } from "../src/config/agent-loader";
 
+// Only these native builtins may intentionally have no Markdown source.
+const markdownOptionalBuiltins = new Set(["general"]);
 const providerOrder = ["claude-code", "zai-coding-plan", "kimi-code-plan-cn", "openai"];
 export interface CanonicalConfig {
   version: 2;
@@ -25,9 +27,12 @@ export function validateCanonicalConfig(raw: unknown): CanonicalConfig {
     !cfg.agents ||
     typeof cfg.agents !== "object" ||
     Array.isArray(cfg.agents) ||
-    Object.keys(cfg.agents).length !== 12
+    Object.keys(cfg.agents).length !== 13 ||
+    !Object.hasOwn(cfg.agents, "general")
   )
-    throw new Error("Expected v2 config with 12 roles and valid cooldown/cycle limits");
+    throw new Error(
+      "Expected v2 config with 13 roles including general and valid cooldown/cycle limits"
+    );
   for (const [role, entry] of Object.entries(cfg.agents)) {
     if (
       !/^[a-zA-Z0-9_-]+$/.test(role) ||
@@ -59,6 +64,7 @@ export function maintainBaseAgents(
   const updates: { path: string; content: string }[] = [];
   for (const [role, entry] of Object.entries(cfg.agents)) {
     const path = join(dir, role + ".md");
+    if (markdownOptionalBuiltins.has(role) && !existsSync(path)) continue;
     const content = readFileSync(path, "utf8");
     const base = parseV2Agent(content);
     if (base.model === entry.chain[0].model) continue;

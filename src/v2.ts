@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type { Plugin } from "@opencode/plugin";
 import { Model } from "@opencode/plugin";
 import { type V2Step, validateV2Step } from "./config/agent-loader.js";
-import { classifyError } from "./detection/classifier.js";
+import { classifyProviderError } from "./detection/provider-error.js";
 
 export interface V2Config {
   version: 2;
@@ -68,6 +68,19 @@ export default {
       (await ctx.agent.list()).data.some((a) => a.id === id && a.mode === "subagent");
     const unavailableUntil = new Map<string, number>();
     const registrations: Array<{ dispose: () => Promise<void> }> = [];
+    // general is built in: project only its canonical start model, never replace
+    // its definition with a Markdown profile or reconstruct its capabilities.
+    const generalStart = config.agents.general?.chain[0].model;
+    if (generalStart) {
+      registrations.push(
+        await ctx.agent.transform((editor) => {
+          if (editor.get("general")?.mode !== "subagent") return;
+          editor.update("general", (agent) => {
+            agent.model = Model.Ref.parse(generalStart);
+          });
+        })
+      );
+    }
     // A child session owns one budget for this plugin lifetime; retries and prompt
     // hooks never replenish it. A new child starts at pass 1, even mid-chain.
     const progress = new Map<
@@ -139,7 +152,7 @@ export default {
         if (!session.parentID || session.agent !== event.agent || !(await isSubagent(event.agent)))
           return;
         if (!session.model || exact(session.model) !== exact(event.model)) return;
-        const category = classifyError(event.error.message, event.error.status);
+        const category = classifyProviderError(event.error);
         if (!["rate_limit", "quota_exceeded", "5xx", "timeout", "overloaded"].includes(category))
           return;
         const index = chain.findIndex((step) => matches(event.model, step.model));

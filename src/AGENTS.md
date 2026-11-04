@@ -11,7 +11,9 @@
 
 - Preserve the separation between global model health and per-session fallback state.
 - Preserve the fallback and replay boundaries; changes to public configuration belong with schema and migration handling.
-- The native v2 server accepts `options.config` or `options.configPath`; without either it uses an empty chain map and never switches models. V2 chains name explicit subagent IDs only.
+- The native v2 server accepts `options.config` or `options.configPath`; without either it uses an empty chain map and never switches models. V2 chains name explicit subagent IDs only. Configured builtin `general` receives only `chain[0].model` through `ctx.agent.transform` when its effective mode is `subagent`; all other definition fields remain native.
+
+- Native retry errors are normalized by `detection/provider-error.ts` using bounded JSON parsing of `response.body` and explicit `error`/`message` envelopes. Structured `claude_session_limit` takes precedence; generic `provider.internal`/`server_error` alone is not quota. Retry state and child-only switching stay in `v2.ts`.
 
 ## Work Guidance
 

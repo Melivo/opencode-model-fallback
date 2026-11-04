@@ -8,7 +8,7 @@ Basisverzeichnis: `/home/visimeos/.config/opencode/local-plugins/model-fallback`
 
 - `server.js`: v2-Verzeichnis-Einstieg; exportiert `dist/server.js`.
 - `dist/server.js`: gebauter v2-Plugin-Code, SDK `@opencode/plugin@2.0.25` wird vom Host bereitgestellt.
-- `deployment/model-fallback.v2.json`: einzige Autorität; exakt 12 Rollen mit jeweils Primärmodell und drei vollständigen Fallbackschritten. Keine Ableitung aus Agentdateien.
+- `deployment/model-fallback.v2.json`: einzige Autorität; exakt 13 Rollen (zwölf bisherige Customrollen plus builtin general) mit jeweils Primärmodell und drei vollständigen Fallbackschritten. Keine Ableitung aus Agentdateien.
 - `deployment/base-agent-sha256.json`: eingefrorene Quellhashes der zwölf erhaltenen Basisprofile; die 36 callable Fallbackprofile wurden gesichert und entfernt.
 - `deployment/activation.snippet.json`: einzufügender Plugin-Eintrag.
 - `src/v2.ts`: v2-Implementierung. Legacy-Code und seine Tests bleiben separat erhalten.
@@ -32,7 +32,13 @@ Basisverzeichnis: `/home/visimeos/.config/opencode/local-plugins/model-fallback`
 
 **Keinen einzelnen Dateipfad in `plugins` konfigurieren:** v2 erwartet für explizite lokale Plugins ein Verzeichnis und sucht dort nach `server.js`. `dist/index.js` ist der Legacy-Einstieg und hier nicht zu verwenden.
 
-## Nachgewiesene Prüfung
+## General-/Streamlimit-Prüfung vor Aktivierung
+
+Builtin `general` wird ohne neue Markdowndefinition aus `chain[0].model` transformiert, ausschließlich im effektiven Subagentmodus. Die vier low-Schritte sind Opus 5.5, GLM 5.3, Kimi K3.1 Pro und Sol 6.1. Bestehende zwölf Ketten, docs-curator/Kimi-Thinking-off und Grenzen bleiben erhalten. Laufzeit-/Wartungsverträge und aktuelle lokale Testpfade: [Wartungsnotizen](../docs/maintenance.md#builtin-general-und-claude-streamlimit).
+
+Die neue native Fixtureprüfung verwendet lokale HTTP200-SSE-Fehler durch denselben Parser wie Live-Claude und prüft Originalcode, Child-/Toolidentität, unveränderten Parent und Isolation vor Prompts. Sie ruft weder Claude SDK noch Konten oder bezahlte Provider auf; Stale-Nachweise bleiben Unit-only. Erfolgreiche Fixturechecks aktivieren nichts: Installationssync und unabhängiges Review sind separate Gates; der Benutzer lädt erst danach manuell neu.
+
+## Historische Prüfung
 
 ```sh
 cd /home/visimeos/.config/opencode/local-plugins/model-fallback
