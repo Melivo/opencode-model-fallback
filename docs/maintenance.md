@@ -1,23 +1,21 @@
 # Wartungsnotizen (Draft)
 
-## Relevante Dateien
+## Aktuelle v2-Konfiguration und Wartung
 
-- `src/v2.ts`: native v2-Hooks, Modellauswahl und schrittbezogene HTTP-Body-Overrides.
-- `test/v2-*.test.ts`: v2-Regressionsprüfungen.
-- `scripts/integration-v2.py`: privater v2-Testserver; Child-Abschluss und Parent-Fortsetzung.
-- `deployment/model-fallback.v2.json`: einzige Autorität für dreizehn Rollen (zwölf Customprofile und builtin `general`), komplette geordnete Modellschritte, Varianten, Overrides und Limits.
-- `scripts/derive-v2-config.ts`: historischer Name; validiert JSON und prüft Basismodelle read-only. `--sync-base` ist die ausdrücklich schreibende Ausnahme und projiziert nur Modellzeilen. Keine Ableitung vollständiger Ketten oder Sortierung.
-- `deployment/base-agent-sha256.json`: eingefrorene SHA-256-Werte der zwölf Basisprofile (Dateinamen relativ zum Agentverzeichnis); bei absichtlichen Basisänderungen gezielt aktualisieren.
+- `deployment/model-fallback.v2.json` ist die vollständige neutrale Vorlage: `version: 2`, `cooldownMs: 300000`, `maxCycles: 1`, `agents: {}`. Sie ist ein gültiger No-op, nicht eine vorbefüllte Liste persönlicher Rollen.
+- `examples/model-fallback.v2.json` zeigt separat eine konfigurierte generische Beispielkette. Die Beispielwerte sind keine zugesicherten Provider oder Modelle.
+- `src/v2.ts` lädt eine explizite Konfiguration über `config` oder `configPath`; fehlt beides, gilt die neutrale Runtime-Defaultkonfiguration.
+- `scripts/derive-v2-config.ts` validiert Konfigurationen. `bun run check:v2` prüft die neutrale Vorlage ohne Home-Agentdateien. Pfadbezogene Operationen brauchen explizit sowohl Configdatei als auch Agentverzeichnis.
+- `deployment/base-agent-sha256.json` ist ein historisches Hashmanifest. Es wird beibehalten, ist keine Laufzeitabhängigkeit und belegt keine aktuelle Agentprofil-Autorität.
 
-## Wartung ohne callable Fallbackprofile
+### Vorlage sicher einrichten und syncen
 
-1. Nur die kanonische JSON bearbeiten; komplette Schrittobjekte einschließlich `request.body` erhalten. Die entfernten `-fallback1.md` bis `-fallback3.md` werden weder zur Laufzeit noch für Wartung/Tests benötigt und dürfen nicht zur Regeneration herangezogen werden.
-2. `bun run check:v2` validiert JSON und vergleicht ausschließlich `chain[0].model` mit vorhandenen Basisprofilen. Nur builtin `general` darf ohne Markdown fehlen; fehlende Customprofile bleiben Fehler. Vorhandenes `general.md` wird regulär validiert und bei explizitem Sync geprüft. `bun run derive:v2` ist ein read-only Kompatibilitätsalias. Abweichungen schlagen fehl, statt JSON zu überschreiben.
-3. Nach bewusst geänderter Primärmodellidentität projiziert `bun run sync:v2:bases` ausschließlich die `model:`-Zeile auf die Basisprofile; Prompts, Berechtigungen und sonstige Bytes bleiben erhalten. Alle Profile werden vor dem ersten Schreibzugriff geprüft. Alternative Pfade: `bun scripts/derive-v2-config.ts --check <config.json> <agents-dir>` (bzw. `--sync-base`).
-4. `bun test`, `bun run typecheck`, `bun run build`, `bun run test:v2:integration` ausführen. Wartungstests verwenden temporäre zwölf Basisprofile, keine Benutzerprofile oder Fallbackdateien.
-5. Minimale geänderte Artefakte zur aktiven Installation synchronisieren und bytegleich prüfen. Kein automatischer Live-Reload: der Benutzer lädt selbst neu.
+1. Nach Installation des Pakets die neutrale Vorlage aus `deployment/model-fallback.v2.json` im installierten Paket in den OpenCode-Konfigurationsordner kopieren: `$XDG_CONFIG_HOME/opencode` oder andernfalls `~/.config/opencode`. Nur in eine noch nicht vorhandene Zieldatei kopieren; bestehende Dateien niemals ersetzen. Die Installation selbst erzeugt oder ändert keine Home-Konfigurationsdateien und installiert keine Agentprofile.
+2. Für explizite vorhandene Subagenten müssen Nutzer selbst exakte, verfügbare Provider-/Model-Referenzen ergänzen. Jede Kette hat 2–10 Schritte einschließlich Startmodell und Fallback.
+3. `bun run check:v2` nutzt die versionierte neutrale Vorlage und liest keine persönlichen Agentdateien. Für gezielte Prüfung: `bun scripts/derive-v2-config.ts --check <config.json> <agents-dir>`. Eine explizite Synchronisierung erfolgt ausschließlich mit `bun scripts/derive-v2-config.ts --sync-base <config.json> <agents-dir>`; sie prüft und aktualisiert nur das Modellfeld der passenden Agentdateien im angegebenen Verzeichnis. Kein impliziter Home-Sync.
+4. Tests verwenden kurze generische Fixtures und private Testdaten statt persönlicher Profile. Die [README-Setupanleitung](../README.md#opencode-v2-installation-and-configuration) beschreibt das portable Verbraucher-Setup.
 
-Die 36 ehemaligen callable Profile sind außerhalb der OpenCode-Discovery unter `~/.local/state/opencode-plugin-backups/` gesichert; der konkrete Pfad und geprüfte Hashes stehen in `evidence/json-ssot-migration.json`.
+Frühere Rollenlisten, lokale Modellketten, Homepfade und Sync-/Integrationsnachweise sind historisch; sie bleiben als damalige Evidenz erhalten, sind aber kein aktueller Vertrag für das neutrale Setup.
 
 ## Begrenztes zyklisches Fallback (maxCycles)
 
@@ -32,11 +30,13 @@ Verbrauch/Stop:
 
 Stale-Schutz: Native `attempt`-Nummern starten pro logischem Schritt neu. Ein Retry-Event wird verworfen, wenn `attempt` nicht strikt über dem zuletzt behandelten steht; ein erfolgreicher primärer `http.response` (200) des Childs hebt nur diesen Zaun — nie das Pass-Budget. Ein veralteter Retry für ein früheres Modell kann das Child nie rückwärts bewegen, auch nicht nach Wrap.
 
-Die Deploymentdateien enthalten lokale Pfade und sind kein portables Standardsetup. Bei Änderungen zuerst Skripte und Konfiguration lesen; nur explizites `--sync-base` schreibt Basis-Modellzeilen, niemals Ketten. Diese Kopie wurde nicht erneut gegen reale Provider authentifiziert.
+Pfadbezogene Wartungsbefehle bearbeiten ausschließlich die ausdrücklich übergebenen Config- und Agentverzeichnisse; es gibt keinen impliziten Home-Sync. `--sync-base` aktualisiert ausschließlich Modellfelder im angegebenen Agentverzeichnis, niemals Konfigurationsketten. Diese Kopie wurde nicht erneut gegen reale Provider authentifiziert.
 
-## Builtin general und Claude-Streamlimit
+## Historische General-/Claude-Streamlimit-Details
 
-Die kanonische general-Kette ist Opus 5.5 → GLM 5.3 → Kimi K3.1 Pro → Sol 6.1, jeweils `low` (exakte Referenzen in der JSON). General erhält sein Startmodell per `ctx.agent.transform` nur im effektiven Subagentmodus; Prompt, Permissions und alle weiteren nativen Felder bleiben erhalten. Eine `general.md` wird dafür nicht erzeugt. Thinking-off bleibt ausschließlich im bestehenden docs-curator/Kimi-Schritt.
+Die folgenden konkreten General- und docs-curator-Modellketten beschreiben einen früheren lokalen Stand. Sie sind weder Runtime-Default noch aktuelle Autorität für persönliche Agentprofile; das heutige neutrale Setup enthält keine vorkonfigurierten Modellketten. Die damaligen Ablauf- und Testbeobachtungen bleiben als historische Evidenz erhalten.
+
+Die frühere General-Kette war Opus 5.5 → GLM 5.3 → Kimi K3.1 Pro → Sol 6.1, jeweils `low` (exakte Referenzen in der damaligen JSON). General erhielt sein Startmodell per `ctx.agent.transform` nur im effektiven Subagentmodus. Eine `general.md` wurde dafür nicht erzeugt. Thinking-off galt nur für den damaligen docs-curator/Kimi-Schritt.
 
 Der native Retrypfad normalisiert das ursprüngliche Claude-1.7-SSE-Envelope begrenzt und deterministisch. `provider.internal` oder `server_error` allein ist keine Quota. Der Integrationstest verwendet dieselbe native `@opencode/ai/providers/openai-compatible`-Implementierung wie Live-Claude, aber nur lokale HTTP200-SSE-Testdaten; ein privater Observer prüft den unveränderten Code `claude_session_limit` in `error.response.body` vor Normalisierung. Dies ist kein Claude-/Account-E2E-Test.
 

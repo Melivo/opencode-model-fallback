@@ -11,6 +11,8 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  constants,
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -42,10 +44,11 @@ export const REQUIRED_FILES = [
   "dist/index.d.ts",
   "dist/server.js",
   "examples/model-fallback.v2.json",
+  "deployment/model-fallback.v2.json",
 ] as const;
 const OPTIONAL_FILE = /^dist\/src\/[A-Za-z0-9_/-]+\.d\.ts$/;
 /** Personal deployment, evidence or home-path markers that must never ship. */
-const FORBIDDEN_CONTENT = ["/home/", ".hermes", "deployment/model-fallback", "base-agent-sha256"];
+const FORBIDDEN_CONTENT = ["/home/", ".hermes", "base-agent-sha256"];
 
 /** Process environment keys a child may inherit; everything else is dropped. */
 export const SAFE_ENV_KEYS = [
@@ -140,6 +143,8 @@ export function validateManifests(
     errors.push("publish registry is not public npm");
   if (pkg.repository?.url !== "git+https://github.com/Melivo/opencode-model-fallback.git")
     errors.push("repository url is not the fork origin");
+  if (pkg.bin) errors.push("package must not install a bin");
+  if (pkg.scripts?.postinstall) errors.push("package must not run a postinstall hook");
   return errors;
 }
 
@@ -176,22 +181,26 @@ function privatePackageJson(dir: string, name: string) {
 
 /** Imports the installed package as a consumer would and checks the safe default. */
 const RUNTIME_PROBE = `
-const name = process.argv[1], id = process.argv[2];
+const name = process.argv[1], id = process.argv[2], configPath = process.argv[3];
 const server = await import(name + "/server");
 if (server.default?.id !== id || typeof server.default.setup !== "function") throw new Error("server export invalid");
 const legacy = import.meta.resolve(name);
 if (!legacy.endsWith("/dist/index.js")) throw new Error("legacy export resolves to " + legacy);
-const hooks = {};
-const ctx = { options: {}, agent: { list: async () => ({ data: [{ id: "any", mode: "subagent" }] }) },
-  model: { list: async () => ({ data: [] }) },
-  session: { hook: async (n, cb) => { hooks[n] = cb; return { dispose: async () => {} }; },
-    get: async () => ({ parentID: "p", agent: "any", model: { providerID: "a", id: "b" } }),
-    switchModel: async () => { throw new Error("default config switched a model"); } } };
-const dispose = await server.default.setup(ctx);
-const event = { sessionID: "s", agent: "any", model: { providerID: "a", id: "b" }, attempt: 2, error: { message: "rate limit", status: 429 } };
-await hooks.retry(event);
-if (event.decision !== undefined) throw new Error("default config decided a retry");
-await dispose();
+const exercise = async (options) => {
+  const hooks = {};
+  const ctx = { options, agent: { list: async () => ({ data: [{ id: "any", mode: "subagent" }] }) },
+    model: { list: async () => ({ data: [] }) },
+    session: { hook: async (n, cb) => { hooks[n] = cb; return { dispose: async () => {} }; },
+      get: async () => ({ parentID: "p", agent: "any", model: { providerID: "a", id: "b" } }),
+      switchModel: async () => { throw new Error("empty config switched a model"); } } };
+  const dispose = await server.default.setup(ctx);
+  const event = { sessionID: "s", agent: "any", model: { providerID: "a", id: "b" }, attempt: 2, error: { message: "rate limit", status: 429 } };
+  await hooks.retry(event);
+  if (event.decision !== undefined) throw new Error("empty config decided a retry");
+  await dispose();
+};
+await exercise({});
+await exercise({ configPath });
 console.log(JSON.stringify({ server: import.meta.resolve(name + "/server"), legacy }));
 `;
 
@@ -205,7 +214,11 @@ async function main() {
   // Only our own public-registry config; never project/home .npmrc or inherited npm auth.
   const npmrc = join(scratch, "npmrc");
   writeFileSync(npmrc, `registry=${PUBLIC_REGISTRY}\n`, { mode: 0o600 });
-  const env = safeEnv(process.env, { HOME: join(scratch, "home"), TMPDIR: join(scratch, "tmp") });
+  const env = safeEnv(process.env, {
+    HOME: join(scratch, "home"),
+    TMPDIR: join(scratch, "tmp"),
+    XDG_CONFIG_HOME: join(scratch, "xdg-config"),
+  });
   const npmEnv = {
     ...env,
     NPM_CONFIG_USERCONFIG: npmrc,
@@ -256,6 +269,14 @@ async function main() {
     ...validateArchiveFiles(entries),
     ...validateManifests(pkg, JSON.parse(read("plugin.json")), expectedVersion),
   ];
+  const neutral = JSON.parse(read("deployment/model-fallback.v2.json"));
+  if (
+    neutral.version !== 2 ||
+    neutral.cooldownMs !== 300000 ||
+    neutral.maxCycles !== 1 ||
+    Object.keys(neutral.agents ?? {}).length !== 0
+  )
+    errors.push("deployment template is not the neutral no-op config");
   for (const entry of entries.filter((e) => /\.(js|json|ts)$/.test(e))) {
     const text = readFileSync(join(extract, entry), "utf8");
     for (const marker of FORBIDDEN_CONTENT)
@@ -282,12 +303,29 @@ async function main() {
   );
   if (legacyPeers.length)
     throw new Error(`optional legacy peers installed: ${legacyPeers.join(", ")}`);
+  const configDir = join(scratch, "xdg-config", "opencode");
+  mkdirSync(configDir, { recursive: true });
+  const configPath = join(configDir, "model-fallback.v2.json");
+  const installedTemplate = join(installed, "deployment", "model-fallback.v2.json");
+  copyFileSync(installedTemplate, configPath, constants.COPYFILE_EXCL);
+  const originalConfig = readFileSync(configPath);
+  let overwriteError: any;
+  try {
+    copyFileSync(installedTemplate, configPath, constants.COPYFILE_EXCL);
+  } catch (error) {
+    overwriteError = error;
+  }
+  if (overwriteError?.code !== "EEXIST") throw new Error("existing config was not protected");
+  if (!readFileSync(configPath).equals(originalConfig))
+    throw new Error("non-overwriting copy changed the existing config");
+  if (existsSync(join(configDir, "agent")) || existsSync(join(configDir, "agents")))
+    throw new Error("package check installed agent profiles");
   const probe = JSON.parse(
-    run("node", ["--input-type=module", "-e", RUNTIME_PROBE, PACKAGE_NAME, RUNTIME_ID], {
-      cwd: pluginRoot,
-      env,
-      capture: true,
-    })
+    run(
+      "node",
+      ["--input-type=module", "-e", RUNTIME_PROBE, PACKAGE_NAME, RUNTIME_ID, configPath],
+      { cwd: pluginRoot, env, capture: true }
+    )
   );
   for (const url of Object.values(probe) as string[])
     if (!within(realpathSync(new URL(url).pathname), installed))

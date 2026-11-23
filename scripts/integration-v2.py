@@ -34,7 +34,8 @@ if ARGS.scenario == 'all':
 GENERAL = ARGS.scenario != 'legacy'
 CYCLE_LATENCY = 12.2  # fixture provider latency, not plugin retry delay
 NATIVE_PACKAGE = '@opencode/ai/providers/openai-compatible'
-GENERAL_MODELS = ['claude-opus-5-5','glm-5.3','k3.1-pro','gpt-6.1-sol']
+GENERAL_PROVIDERS = ['fixture-general-one','fixture-general-two','fixture-general-three','fixture-general-four']
+GENERAL_MODELS = ['general-a','general-b','general-c','general-d']
 CLAUDE_ENVELOPE = {'error': {'type':'error','code':'claude_session_limit','message':json.dumps({'type':'error','error':{'type':'server_error','code':'server_error','message':"You've hit your 5-hour limit …"}})}}
 PLUGIN_PACKAGE = ARGS.plugin_package.resolve(strict=True)
 if ARGS.opencode_bin is None:
@@ -140,9 +141,7 @@ for name in cycle_chains:
     config['providers']['fixture-one']['models'][name+'-a'] = model('high')
     config['providers']['fixture-two']['models'][name+'-b'] = model('low')
 if GENERAL:
-    canonical = json.loads((ROOT/'deployment/model-fallback.v2.json').read_text())
-    general_chain = canonical['agents']['general']['chain']
-    assert general_chain == [{'model':p+'/'+m+'#low'} for p,m in zip(['claude-code','zai-coding-plan','kimi-code-plan-cn','openai'],GENERAL_MODELS)]
+    general_chain = [{'model':p+'/'+m+'#low'} for p,m in zip(GENERAL_PROVIDERS,GENERAL_MODELS)]
     plugin_config = {'version':2,'cooldownMs':10000 if ARGS.scenario == 'general-cycles' else 300000,
                      'maxCycles':1 if ARGS.scenario == 'general-exhaustion' else 5,'agents':{'general':{'chain':general_chain}}}
     config['plugins'][0]['options']['config'] = plugin_config
@@ -271,7 +270,7 @@ try:
     (ARTIFACT/'v2-agents-before-prompt.json').write_text(json.dumps(agents_before,indent=2))
     if GENERAL:
         general = next(a for a in agents_before['data'] if a['id'] == 'general')
-        assert general['mode'] == 'subagent' and general['model'] == {'providerID':'claude-code','id':GENERAL_MODELS[0],'variant':'low'}, general
+        assert general['mode'] == 'subagent' and general['model'] == {'providerID':GENERAL_PROVIDERS[0],'id':GENERAL_MODELS[0],'variant':'low'}, general
         builtin = [json.loads(line)['agent'] for line in OBSERVATIONS.read_text().splitlines() if json.loads(line)['kind'] == 'builtin'][-1]
         after_builtin = [json.loads(line)['agent'] for line in OBSERVATIONS.read_text().splitlines() if json.loads(line)['kind'] == 'after-builtin'][-1]
         assert {k:v for k,v in after_builtin.items() if k != 'model'} == {k:v for k,v in builtin.items() if k != 'model'}, 'builtin fields changed beyond model'

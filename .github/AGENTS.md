@@ -12,8 +12,8 @@
 
 ## Local Contracts
 
-- Release engine: the existing semantic-release configuration is the only release engine. Release tags use `melivo-v${version}`; the first release is `0.1.0`. Existing `v*` tags stay unchanged.
-- Release gate: the release job runs only on a push to `main` or a manual `workflow_dispatch` in the origin repository, and only when repository variable `RELEASE_ENABLED` equals `'true'`. The variable is absent or `false` at setup. Setting it to `false` stops further publishing.
+- Release engine: the existing semantic-release configuration is the only release engine. Future tags and GitHub release names use `opencode-model-fallback-v${version}`. Preserve all historical `melivo-v*` and `v*` tags. The one-time additive alias `opencode-model-fallback-v0.1.6` must resolve to `315e50b08a8a0cbfc43a8c5b6dd945e484518428`, just like `melivo-v0.1.6`; require both exact bindings and new-baseline ancestry in addition to the original bootstrap gate. npm identity and archive names remain unchanged.
+- Release gate: the release job runs only on a push to `main` or a manual `workflow_dispatch` in the origin repository, and only when repository variable `RELEASE_ENABLED` equals `'true'`. The variable is absent or `false` at setup. Setting it to `false` stops further publishing. With `true`, a main push can publish immediately: approve the exact commit before pushing main, not afterward.
 - Permissions: pull request and CI jobs hold no publishing credentials. Never use `pull_request_target`. Grant `contents: write` and `id-token: write` only to the release job.
 - Publishing: npm publishes through OIDC trusted publishing. Never store `NPM_TOKEN` or `NODE_AUTH_TOKEN` in workflow files or repository secrets. `GITHUB_TOKEN` remains allowed.
 - Artifact: the release job publishes the exact tarball prepared and tested in the same run, and the GitHub release attaches that same file. Do not repack at publish time.

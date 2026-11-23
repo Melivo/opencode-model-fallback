@@ -8,7 +8,7 @@
 
 ## Local Contracts
 
-- Cover fallback, health, replay, notification, configuration, and v2 behavior through focused tests. V2 deployment fixtures require twelve custom Markdown profiles; only absent builtin `general.md` is optional. Present builtin profiles receive the same validation and staged model-only sync.
+- Cover fallback, health, replay, notification, configuration, and v2 behavior through focused tests. V2 deployment tests use a neutral config by default and short generic agent fixtures only where explicit config/agent paths are under test. They do not read or modify personal Home profiles.
 
 - `v2-runtime.test.ts` exercises the original Claude SSE envelope through the native retry hook, bounded parsing negatives, and child/stale/cooldown/cycle/override boundaries. These are local unit fixtures, not real-provider E2E evidence.
 

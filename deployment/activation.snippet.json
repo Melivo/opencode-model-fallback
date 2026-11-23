@@ -1,10 +1,6 @@
 {
-  "plugins": [
-    {
-      "package": "/home/visimeos/.config/opencode/local-plugins/model-fallback",
-      "options": {
-        "configPath": "/home/visimeos/.config/opencode/local-plugins/model-fallback/deployment/model-fallback.v2.json"
-      }
-    }
-  ]
+  "package": "@melivo/opencode-model-fallback",
+  "options": {
+    "configPath": "/absolute/path/to/model-fallback.v2.json"
+  }
 }

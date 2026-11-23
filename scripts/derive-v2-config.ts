@@ -1,19 +1,17 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseV2Agent, type V2Step, validateV2Step } from "../src/config/agent-loader";
 
 // Only these native builtins may intentionally have no Markdown source.
 const markdownOptionalBuiltins = new Set(["general"]);
-const providerOrder = ["claude-code", "zai-coding-plan", "kimi-code-plan-cn", "openai"];
 export interface CanonicalConfig {
   version: 2;
   cooldownMs: number;
-  maxCycles: number;
+  maxCycles?: number;
   agents: Record<string, { chain: V2Step[] }>;
 }
 
-/** Validate the canonical JSON without sorting, reconstructing or writing chains. */
+/** Validate arbitrary v2 agent chains without sorting, reconstructing or writing them. */
 export function validateCanonicalConfig(raw: unknown): CanonicalConfig {
   const cfg = raw as CanonicalConfig;
   if (
@@ -21,33 +19,25 @@ export function validateCanonicalConfig(raw: unknown): CanonicalConfig {
     cfg.version !== 2 ||
     !Number.isFinite(cfg.cooldownMs) ||
     cfg.cooldownMs < 10000 ||
-    !Number.isInteger(cfg.maxCycles) ||
-    cfg.maxCycles < 1 ||
-    cfg.maxCycles > 5 ||
+    (cfg.maxCycles !== undefined &&
+      (!Number.isInteger(cfg.maxCycles) || cfg.maxCycles < 1 || cfg.maxCycles > 5)) ||
     !cfg.agents ||
     typeof cfg.agents !== "object" ||
-    Array.isArray(cfg.agents) ||
-    Object.keys(cfg.agents).length !== 13 ||
-    !Object.hasOwn(cfg.agents, "general")
+    Array.isArray(cfg.agents)
   )
-    throw new Error(
-      "Expected v2 config with 13 roles including general and valid cooldown/cycle limits"
-    );
+    throw new Error("Expected v2 config with valid cooldown/cycle limits and an agents object");
   for (const [role, entry] of Object.entries(cfg.agents)) {
     if (
       !/^[a-zA-Z0-9_-]+$/.test(role) ||
-      /-fallback[123]$/.test(role) ||
-      ["build", "plan", "orchestrator"].includes(role) ||
       !Array.isArray(entry?.chain) ||
-      entry.chain.length !== 4
+      entry.chain.length < 2 ||
+      entry.chain.length > 10
     ) {
-      throw new Error(`Invalid base role or four-step chain: ${role}`);
+      throw new Error(`Invalid base role or model chain: ${role}`);
     }
-    entry.chain.forEach((step, i) => {
+    entry.chain.forEach((step) => {
       if (!step || typeof step.model !== "string") throw new Error(`Invalid step: ${role}`);
       validateV2Step(step);
-      if (step.model.split("/")[0] !== providerOrder[i])
-        throw new Error(`Unexpected provider order: ${role}`);
     });
   }
   return cfg;
@@ -89,22 +79,18 @@ export function maintainBaseAgents(
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  if (args.length > 3 || !["--check", "--sync-base"].includes(args[0] ?? "--check")) {
+  const validateOnly = args.length === 0 || (args.length === 1 && args[0] === "--check");
+  const explicitAgents =
+    args.length === 3 && ["--check", "--sync-base"].includes(args[0] ?? "--check");
+  if (!validateOnly && !explicitAgents) {
     throw new Error(
-      "Usage: bun scripts/derive-v2-config.ts [--check|--sync-base] [config.json] [agents-dir]"
+      "Usage: bun scripts/derive-v2-config.ts [--check] | bun scripts/derive-v2-config.ts [--check|--sync-base] config.json agents-dir"
     );
   }
   const configPath = args[1] ?? new URL("../deployment/model-fallback.v2.json", import.meta.url);
-  const dir = args[2] ?? join(homedir(), ".config/opencode/agents");
-  console.log(
-    JSON.stringify(
-      maintainBaseAgents(
-        JSON.parse(readFileSync(configPath, "utf8")),
-        dir,
-        args[0] === "--sync-base"
-      ),
-      null,
-      2
-    )
-  );
+  const raw = JSON.parse(readFileSync(configPath, "utf8"));
+  const result = explicitAgents
+    ? maintainBaseAgents(raw, args[2]!, args[0] === "--sync-base")
+    : { roles: Object.keys(validateCanonicalConfig(raw).agents).length, changed: [] };
+  console.log(JSON.stringify(result, null, 2));
 }

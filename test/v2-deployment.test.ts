@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,42 +8,57 @@ import { maintainBaseAgents, validateCanonicalConfig } from "../scripts/derive-v
 const cfg = JSON.parse(
   readFileSync(new URL("../deployment/model-fallback.v2.json", import.meta.url), "utf8")
 );
-const manifest = JSON.parse(
-  readFileSync(new URL("../deployment/base-agent-sha256.json", import.meta.url), "utf8")
-);
+const fixtureCfg = {
+  version: 2 as const,
+  cooldownMs: 300000,
+  maxCycles: 1,
+  agents: {
+    general: {
+      chain: [{ model: "fixture-one/general-a#low" }, { model: "fixture-two/general-b#low" }],
+    },
+    worker: {
+      chain: [{ model: "fixture-one/worker-a" }, { model: "fixture-two/worker-b" }],
+    },
+  },
+};
 
-test("canonical JSON retains 12 existing chains plus general, limits and complete docs override", () => {
+test("deployment template is a loadable empty v2 configuration with runtime defaults", () => {
   expect(validateCanonicalConfig(cfg)).toBe(cfg);
-  expect(Object.keys(manifest).sort()).toEqual(
-    Object.keys(cfg.agents)
-      .filter((role) => role !== "general")
-      .map((role) => `${role}.md`)
-      .sort()
-  );
-  for (const hash of Object.values(manifest)) expect(hash).toMatch(/^[a-f0-9]{64}$/);
-  expect(Object.keys(cfg.agents)).toHaveLength(13);
-  expect(cfg.agents.general.chain).toEqual([
-    { model: "claude-code/claude-opus-5-5#low" },
-    { model: "zai-coding-plan/glm-5.3#low" },
-    { model: "kimi-code-plan-cn/k3.1-pro#low" },
-    { model: "openai/gpt-6.1-sol#low" },
-  ]);
-  expect(cfg.cooldownMs).toBe(300000);
-  expect(cfg.maxCycles).toBe(5);
-  expect(cfg.agents["docs-curator"].chain[2]).toEqual({
-    model: "kimi-code-plan-cn/kimi-for-coding#high",
-    request: { body: { thinking: { type: "disabled" } } },
+  expect(cfg).toEqual({ version: 2, cooldownMs: 300000, maxCycles: 1, agents: {} });
+});
+
+test("default check validates without discovering HOME agent profiles", () => {
+  const home = mkdtempSync(join(tmpdir(), "fallback-empty-home-"));
+  try {
+    const result = spawnSync(process.execPath, ["scripts/derive-v2-config.ts", "--check"], {
+      cwd: new URL("..", import.meta.url),
+      env: { ...process.env, HOME: join(home, "missing-home") },
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ roles: 0, changed: [] });
+    expect(readdirSync(home)).toEqual([]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("agent comparison and sync require both explicit paths", () => {
+  const result = spawnSync(process.execPath, ["scripts/derive-v2-config.ts", "--sync-base"], {
+    cwd: new URL("..", import.meta.url),
+    encoding: "utf8",
   });
-  for (const i of [0, 1, 3]) expect(cfg.agents["docs-curator"].chain[i].request).toBeUndefined();
+  expect(result.status).not.toBe(0);
+  expect(result.stderr).toContain("config.json agents-dir");
 });
 
 function fixture(run: (dir: string, sources: Record<string, string>) => void) {
   const dir = mkdtempSync(join(tmpdir(), "fallback-maintenance-"));
   try {
     const sources: Record<string, string> = {};
-    for (const [role, entry] of Object.entries(cfg.agents) as [string, any][]) {
+    for (const [role, entry] of Object.entries(fixtureCfg.agents)) {
       if (role === "general") continue;
-      const content = `---\nmode: subagent\nmodel: ${entry.chain[0].model}\npermissions:\n  - action: '*'\n    effect: deny\n---\nExact prompt for ${role}.\nmodel: preserve this body line\n`;
+      const content = `---\nmode: subagent\nmodel: ${entry.chain[0].model}\npermissions:\n  - action: '*'\n    effect: deny\n---\nDummy prompt.\nmodel: preserve this body line\n`;
       sources[role] = content;
       writeFileSync(join(dir, `${role}.md`), content);
     }
@@ -52,90 +68,106 @@ function fixture(run: (dir: string, sources: Record<string, string>) => void) {
   }
 }
 
-test("check and sync need only 12 base files, never fallback profiles; JSON remains untouched", () =>
+test("explicit check and sync use only supplied generic base files; JSON remains untouched", () =>
   fixture((dir, sources) => {
-    const before = JSON.stringify(cfg);
-    expect(readdirSync(dir)).toHaveLength(12);
-    expect(maintainBaseAgents(cfg, dir)).toEqual({ roles: 13, changed: [] });
-    expect(maintainBaseAgents(cfg, dir, true)).toEqual({ roles: 13, changed: [] });
+    const before = JSON.stringify(fixtureCfg);
+    expect(readdirSync(dir)).toEqual(["worker.md"]);
+    expect(maintainBaseAgents(fixtureCfg, dir)).toEqual({ roles: 2, changed: [] });
+    expect(maintainBaseAgents(fixtureCfg, dir, true)).toEqual({ roles: 2, changed: [] });
     for (const [role, content] of Object.entries(sources))
       expect(readFileSync(join(dir, `${role}.md`), "utf8")).toBe(content);
-    expect(JSON.stringify(cfg)).toBe(before);
-    expect(readdirSync(dir)).toHaveLength(12); // no builtin or fallback profile created
+    expect(JSON.stringify(fixtureCfg)).toBe(before);
+    expect(readdirSync(dir)).toEqual(["worker.md"]);
   }));
 
 test("explicit sync changes only base model line, preserving prompts and permissions", () =>
   fixture((dir, sources) => {
-    const role = Object.keys(cfg.agents)[0];
+    const role = "worker";
     const path = join(dir, `${role}.md`);
     const original = sources[role];
     const stale = original.replace(/^model:.*$/m, 'model: "other/stale#low"');
     writeFileSync(path, stale);
-    expect(() => maintainBaseAgents(cfg, dir)).toThrow("Base model differs");
+    expect(() => maintainBaseAgents(fixtureCfg, dir)).toThrow("Base model differs");
     expect(readFileSync(path, "utf8")).toBe(stale);
-    expect(maintainBaseAgents(cfg, dir, true).changed).toEqual([path]);
+    expect(maintainBaseAgents(fixtureCfg, dir, true).changed).toEqual([path]);
     expect(readFileSync(path, "utf8")).toBe(
-      original.replace(/^model:.*$/m, `model: ${JSON.stringify(cfg.agents[role].chain[0].model)}`)
+      original.replace(
+        /^model:.*$/m,
+        `model: ${JSON.stringify(fixtureCfg.agents[role].chain[0].model)}`
+      )
     );
   }));
 
 test("sync stages validation before writing and rejects non-subagents", () =>
   fixture((dir, sources) => {
-    const roles = Object.keys(sources);
-    const first = join(dir, `${roles[0]}.md`);
-    const stale = sources[roles[0]].replace(/^model:.*$/m, "model: other/stale");
+    const first = join(dir, "worker.md");
+    const stale = sources.worker.replace(/^model:.*$/m, "model: other/stale");
     writeFileSync(first, stale);
     writeFileSync(
-      join(dir, `${roles.at(-1)}.md`),
-      sources[roles.at(-1)!].replace("mode: subagent", "mode: primary")
+      join(dir, "general.md"),
+      sources.worker.replace("mode: subagent", "mode: primary")
     );
-    expect(() => maintainBaseAgents(cfg, dir, true)).toThrow("Expected a subagent");
+    expect(() => maintainBaseAgents(fixtureCfg, dir, true)).toThrow("Expected a subagent");
     expect(readFileSync(first, "utf8")).toBe(stale);
   }));
 
 test("only missing builtin general is optional; custom sources and present general are validated", () =>
-  fixture((dir, sources) => {
+  fixture((dir) => {
     const general = join(dir, "general.md");
     const content = "---\nmode: subagent\nmodel: other/stale\n---\nKeep builtin override prompt\n";
     writeFileSync(general, content);
-    expect(() => maintainBaseAgents(cfg, dir)).toThrow("Base model differs");
-    expect(maintainBaseAgents(cfg, dir, true).changed).toEqual([general]);
+    expect(() => maintainBaseAgents(fixtureCfg, dir)).toThrow("Base model differs");
+    expect(maintainBaseAgents(fixtureCfg, dir, true).changed).toEqual([general]);
     expect(readFileSync(general, "utf8")).toBe(
-      content.replace("other/stale", JSON.stringify(cfg.agents.general.chain[0].model))
+      content.replace("other/stale", JSON.stringify(fixtureCfg.agents.general.chain[0].model))
     );
     writeFileSync(general, content.replace("mode: subagent", "mode: primary"));
-    expect(() => maintainBaseAgents(cfg, dir, true)).toThrow("Expected a subagent");
+    expect(() => maintainBaseAgents(fixtureCfg, dir, true)).toThrow("Expected a subagent");
     writeFileSync(general, "not frontmatter");
-    expect(() => maintainBaseAgents(cfg, dir, true)).toThrow();
+    expect(() => maintainBaseAgents(fixtureCfg, dir, true)).toThrow();
     rmSync(general);
-    const role = Object.keys(sources)[0];
-    rmSync(join(dir, role + ".md"));
-    expect(() => maintainBaseAgents(cfg, dir, true)).toThrow();
-    // A custom name replacing general must not inherit the builtin exemption.
-    const copy = structuredClone(cfg);
-    copy.agents.custom = copy.agents.general;
-    delete copy.agents.general;
-    expect(() => validateCanonicalConfig(copy)).toThrow("including general");
+    rmSync(join(dir, "worker.md"));
+    expect(() => maintainBaseAgents(fixtureCfg, dir, true)).toThrow();
+    const custom = structuredClone(fixtureCfg);
+    custom.agents.custom = custom.agents.general;
+    delete custom.agents.general;
+    expect(validateCanonicalConfig(custom)).toBe(custom);
   }));
 
-test("canonical validation rejects invalid order, duplicates, unsafe overrides and missing roles without sorting", () => {
+test("validation matches runtime chain, role-name and optional maxCycles contracts", () => {
+  expect(validateCanonicalConfig(fixtureCfg)).toBe(fixtureCfg);
   const mutate = (fn: (copy: any) => void) => {
-    const copy = structuredClone(cfg);
+    const copy = structuredClone(fixtureCfg);
     fn(copy);
     return copy;
   };
-  const role = Object.keys(cfg.agents)[0];
-  expect(() => validateCanonicalConfig(mutate((c) => c.agents[role].chain.reverse()))).toThrow(
-    "provider order"
-  );
-  expect(() =>
-    validateCanonicalConfig(mutate((c) => (c.agents[role].chain[1] = c.agents[role].chain[0])))
-  ).toThrow("provider order");
   expect(() =>
     validateCanonicalConfig(
-      mutate((c) => (c.agents[role].chain[2].request = { body: { messages: [] } }))
+      mutate((c) => (c.agents.general.chain = c.agents.general.chain.slice(0, 1)))
+    )
+  ).toThrow("model chain");
+  expect(() =>
+    validateCanonicalConfig(
+      mutate((c) => (c.agents.general.chain[1].request = { body: { messages: [] } }))
     )
   ).toThrow("unsafe");
-  expect(() => validateCanonicalConfig(mutate((c) => delete c.agents[role]))).toThrow("13 roles");
+  expect(validateCanonicalConfig(mutate((c) => delete c.maxCycles))).toBeDefined();
   expect(() => validateCanonicalConfig(mutate((c) => (c.maxCycles = 6)))).toThrow("cycle");
+});
+
+test("validation permits explicit generic role names without personal role policy", () => {
+  const generic = structuredClone(fixtureCfg);
+  generic.agents = {};
+  for (const role of ["build", "plan", "orchestrator", "worker-fallback1"]) {
+    generic.agents[role] = {
+      chain: [{ model: "fixture-one/a" }, { model: "fixture-two/b" }],
+    };
+  }
+  expect(validateCanonicalConfig(generic)).toBe(generic);
+  expect(Object.keys(generic.agents)).toEqual([
+    "build",
+    "plan",
+    "orchestrator",
+    "worker-fallback1",
+  ]);
 });

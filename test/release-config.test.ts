@@ -53,6 +53,65 @@ describe("real Angular analyzer: stable 0.x policy", () => {
   }
 });
 
+test("new tag prefix continues the real local Git release history from 0.1.6", async () => {
+  // Private helpers are deliberately tied to the lockfile-resolved release engine.
+  const require = createRequire(import.meta.url);
+  expect(require("semantic-release/package.json").version).toBe("25.0.3");
+  const internal = (path: string) =>
+    import(new URL(path, import.meta.resolve("semantic-release")).href);
+  const [
+    { default: getTags },
+    { default: getLastRelease },
+    { default: getCommits },
+    { default: getNextVersion },
+  ] = await Promise.all([
+    internal("./lib/branches/get-tags.js"),
+    internal("./lib/get-last-release.js"),
+    internal("./lib/get-commits.js"),
+    internal("./lib/get-next-version.js"),
+  ]);
+  const root = scratch();
+  const env = safeEnv(process.env, {
+    HOME: root,
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_AUTHOR_NAME: "Release fixture",
+    GIT_AUTHOR_EMAIL: "fixture@example.invalid",
+    GIT_COMMITTER_NAME: "Release fixture",
+    GIT_COMMITTER_EMAIL: "fixture@example.invalid",
+  });
+  const git = (...args: string[]) => {
+    const result = spawnSync("git", args, { cwd: root, env, encoding: "utf8" });
+    expect(result.status).toBe(0);
+    return result.stdout.trim();
+  };
+  git("init", "-b", "main");
+  git("commit", "--allow-empty", "-m", "chore: baseline fixture");
+  const baseline = git("rev-parse", "HEAD");
+  git("tag", "melivo-v0.1.6");
+  git("tag", "v9.0.0"); // Unrelated historical prefix must not win.
+  git("commit", "--allow-empty", "-m", "fix(config): ship neutral user configuration template");
+  const context = { cwd: root, env, options: config, logger };
+  const branchTags = async () => (await getTags(context, [{ name: "main", type: "release" }]))[0];
+  expect(getLastRelease({ ...context, branch: await branchTags() })).toEqual({});
+  git("tag", "opencode-model-fallback-v0.1.6", baseline);
+  const branch = await branchTags();
+  const lastRelease = getLastRelease({ ...context, branch });
+  expect(lastRelease.version).toBe("0.1.6");
+  expect(lastRelease.gitTag).toBe("opencode-model-fallback-v0.1.6");
+  expect(git("rev-parse", lastRelease.gitHead)).toBe(baseline);
+  expect(git("rev-parse", "melivo-v0.1.6")).toBe(baseline);
+  const commits = await getCommits({ ...context, lastRelease });
+  expect(commits.map((commit: { message: string }) => commit.message.trim())).toEqual([
+    "fix(config): ship neutral user configuration template",
+  ]);
+  const type = await analyzeCommits(config.plugins[0][1], { ...context, commits });
+  expect(type).toBe("patch");
+  const version = getNextVersion({ ...context, branch, lastRelease, nextRelease: { type } });
+  expect(version).toBe("0.1.7");
+  expect(config.tagFormat.replace(`\${version}`, version)).toBe("opencode-model-fallback-v0.1.7");
+});
+
 test("prepare synchronizes only temporary manifests, builds after both, and fails closed", () => {
   const root = scratch();
   for (const file of ["package.json", "plugin.json"])
@@ -169,7 +228,7 @@ test("npm resolves the configured publish archive as a local file, not GitHub sh
 
 test("release plugin order retains one exact tested archive and no source commits/changelog", () => {
   expect(config.branches).toEqual(["main"]);
-  expect(config.tagFormat).toBe(`melivo-v\${version}`);
+  expect(config.tagFormat).toBe(`opencode-model-fallback-v\${version}`);
   expect(config.plugins.map((p: any) => p[0])).toEqual([
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
@@ -197,6 +256,7 @@ test("release plugin order retains one exact tested archive and no source commit
   expect(exec.publishCmd).toContain(`--verify-registry \${nextRelease.version}`);
   expect(exec.publishCmd).not.toMatch(/npm pack|npm publish \. /);
   expect(config.plugins[5][1]).toEqual({
+    releaseNameTemplate: `opencode-model-fallback-v\${nextRelease.version}`,
     assets: [
       {
         path: "release-artifacts/melivo-opencode-model-fallback-*.tgz",
@@ -363,7 +423,7 @@ function runShell(root: string, command: string, extra: Record<string, string> =
   });
 }
 
-test("baseline command stops for missing/non-ancestor tags or stale main/HEAD", () => {
+test("baseline command requires exact old/new release bindings, ancestry and current main/HEAD", () => {
   const root = scratch();
   const command = release.jobs.release.steps.find((s: any) =>
     s.name?.startsWith("Require bootstrap")
@@ -376,6 +436,14 @@ test("baseline command stops for missing/non-ancestor tags or stale main/HEAD", 
   "ls-remote origin refs/heads/main") printf '%s\trefs/heads/main\n' "\${MAIN_SHA:-event-sha}" ;;
   "rev-parse --verify refs/tags/melivo-v0.1.0^{commit}") exit "\${BASELINE_EXIT:-0}" ;;
   "merge-base --is-ancestor refs/tags/melivo-v0.1.0^{commit} HEAD") exit "\${ANCESTOR_EXIT:-0}" ;;
+  "rev-parse --verify refs/tags/melivo-v0.1.6^{commit}")
+    test "\${OLD_EXIT:-0}" = 0 || exit 1
+    echo "\${OLD_SHA:-315e50b08a8a0cbfc43a8c5b6dd945e484518428}" ;;
+  "rev-parse --verify refs/tags/opencode-model-fallback-v0.1.6^{commit}")
+    test "\${NEW_EXIT:-0}" = 0 || exit 1
+    echo "\${NEW_SHA:-315e50b08a8a0cbfc43a8c5b6dd945e484518428}" ;;
+  "merge-base --is-ancestor refs/tags/opencode-model-fallback-v0.1.6^{commit} HEAD")
+    exit "\${NEW_ANCESTOR_EXIT:-0}" ;;
   *) exit 90 ;;
 esac`
   );
@@ -383,6 +451,15 @@ esac`
   for (const extra of [
     { BASELINE_EXIT: "1" },
     { ANCESTOR_EXIT: "1" },
+    { OLD_EXIT: "1" },
+    { NEW_EXIT: "1" },
+    { OLD_SHA: "1111111111111111111111111111111111111111" },
+    { NEW_SHA: "2222222222222222222222222222222222222222" },
+    {
+      OLD_SHA: "3333333333333333333333333333333333333333",
+      NEW_SHA: "3333333333333333333333333333333333333333",
+    },
+    { NEW_ANCESTOR_EXIT: "1" },
     { HEAD_SHA: "stale" },
     { MAIN_SHA: "stale" },
   ])

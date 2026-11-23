@@ -15,6 +15,7 @@ import {
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const plugin = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const examplePath = new URL("../examples/model-fallback.v2.json", import.meta.url).pathname;
+const templatePath = new URL("../deployment/model-fallback.v2.json", import.meta.url).pathname;
 
 async function setup(options: Record<string, unknown>) {
   const module = await import("../src/v2");
@@ -67,6 +68,14 @@ test("without options the safe default configures no chains and never switches",
   expect(event.decision).toBeUndefined();
 });
 
+test("the packaged neutral template loads through absolute configPath as a no-op", async () => {
+  const template = JSON.parse(readFileSync(templatePath, "utf8"));
+  expect(template).toEqual({ version: 2, cooldownMs: 300000, maxCycles: 1, agents: {} });
+  const { event, changes } = await setup({ configPath: templatePath });
+  expect(changes).toEqual([]);
+  expect(event.decision).toBeUndefined();
+});
+
 test("explicit configPath and inline config keep their behavior; config wins", async () => {
   const fromPath = await setup({ configPath: examplePath });
   expect(fromPath.changes).toHaveLength(1);
@@ -101,6 +110,14 @@ test("package metadata targets the public fork and keeps attribution and exports
     zod: { optional: true },
   });
   expect(pkg.peerDependenciesMeta["@opencode/plugin"]).toBeUndefined();
+  expect(pkg.bin).toBeUndefined();
+  expect(pkg.scripts.postinstall).toBeUndefined();
+  expect(validateManifests({ ...pkg, bin: { fallback: "dist/index.js" } }, plugin)).toContain(
+    "package must not install a bin"
+  );
+  expect(
+    validateManifests({ ...pkg, scripts: { ...pkg.scripts, postinstall: "true" } }, plugin)
+  ).toContain("package must not run a postinstall hook");
   expect(plugin.version).toBe(pkg.version);
   expect(plugin.id).toBe("opencode-model-fallback");
   expect(plugin.links.map((l: any) => l.url)).toContain(
@@ -113,7 +130,7 @@ test("package metadata targets the public fork and keeps attribution and exports
   expect(validateManifests(pkg, plugin, "1.2.3")).toHaveLength(1);
 });
 
-test("npm files allowlist excludes deployment, evidence and personal artifacts", () => {
+test("npm files allowlist ships only the neutral deployment template", () => {
   expect(pkg.files).toEqual([
     "server.js",
     "plugin.json",
@@ -122,15 +139,17 @@ test("npm files allowlist excludes deployment, evidence and personal artifacts",
     "dist/server.js",
     "dist/src/**/*.d.ts",
     "examples/model-fallback.v2.json",
+    "deployment/model-fallback.v2.json",
   ]);
-  for (const entry of pkg.files) expect(entry).not.toMatch(/deployment|evidence|agents?\/|sha256/);
+  for (const entry of pkg.files.filter((f: string) => f !== "deployment/model-fallback.v2.json"))
+    expect(entry).not.toMatch(/deployment|evidence|agents?\/|sha256/);
 });
 
 test("archive validator accepts the allowlist and rejects personal or stray files", () => {
   const good = [...REQUIRED_FILES.map((f) => `package/${f}`), "package/dist/src/v2.d.ts"];
   expect(validateArchiveFiles(good)).toEqual([]);
   for (const stray of [
-    "package/deployment/model-fallback.v2.json",
+    "package/deployment/other.json",
     "package/deployment/base-agent-sha256.json",
     "package/evidence/v2-server.log",
     "package/dist/scripts/derive-v2-config.d.ts",

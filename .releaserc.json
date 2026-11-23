@@ -1,6 +1,6 @@
 {
   "branches": ["main"],
-  "tagFormat": "melivo-v${version}",
+  "tagFormat": "opencode-model-fallback-v${version}",
   "plugins": [
     [
       "@semantic-release/commit-analyzer",
@@ -55,6 +55,7 @@
     [
       "@semantic-release/github",
       {
+        "releaseNameTemplate": "opencode-model-fallback-v${nextRelease.version}",
         "assets": [
           {
             "path": "release-artifacts/melivo-opencode-model-fallback-*.tgz",

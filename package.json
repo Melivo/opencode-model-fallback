@@ -35,7 +35,8 @@
     "dist/index.d.ts",
     "dist/server.js",
     "dist/src/**/*.d.ts",
-    "examples/model-fallback.v2.json"
+    "examples/model-fallback.v2.json",
+    "deployment/model-fallback.v2.json"
   ],
   "peerDependencies": {
     "@opencode/plugin": ">=2.0.25 <3",

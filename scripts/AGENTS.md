@@ -4,7 +4,7 @@
 
 ## Ownership
 
-- `derive-v2-config.ts` validates v2 configuration and base-model identities; only missing builtin `general.md` is whitelisted (missing custom profiles fail); its compatibility alias is read-only, while `--sync-base` explicitly projects base model lines. `integration-v2.py` verifies the local v2 fallback flow.
+- `derive-v2-config.ts` validates explicit v2 configuration and model identities. Its default `check:v2` validates the neutral template without reading Home agent profiles; explicit `--check config.json agents-dir` and `--sync-base config.json agents-dir` operate only on those supplied paths. `--sync-base` changes only the top-level `model:` line in matching Markdown agent files; it does not populate or replace model chains. `integration-v2.py` verifies the local v2 fallback flow.
 - Keep script behavior separate from the runtime implementation in `src/`.
 
 ## Local Contracts

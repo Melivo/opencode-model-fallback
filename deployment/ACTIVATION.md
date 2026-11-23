@@ -1,42 +1,18 @@
-# Lokaler v2-Fork: Aktivierung und Nachweise
+# Neutrale v2-Konfiguration: Setup und historische Nachweise
 
-**Historischer Aktivierungsnachweis:** Der lokale Plugin-Eintrag wurde ursprünglich geladen und per `/api/plugin` als aktiv bestätigt. Die aktuelle JSON-SSOT-Migration ändert die gespeicherte Wartung, nicht den laufenden Server: kein Reload ausgeführt, erneutes Laden erfolgt ausschließlich durch den Benutzer. Aktuelle Prüfungen und Sicherung: `evidence/json-ssot-migration.json`; ältere Nachweise unten sind historisch.
+## Vorlage manuell bereitstellen
 
-## Dauerhafte Artefakte
+Das Paket liefert `deployment/model-fallback.v2.json` als vollständige neutrale Vorlage: `version: 2`, `cooldownMs: 300000`, `maxCycles: 1` und `agents: {}`. Das konfigurierte JSON-Beispiel in `examples/model-fallback.v2.json` ist davon getrennt und dient nur zur Illustration einer expliziten Agentenkette.
 
-Basisverzeichnis: `/home/visimeos/.config/opencode/local-plugins/model-fallback`
+Nach der Paketinstallation kann die Vorlage aus dem installierten Paket in den OpenCode-Konfigurationsordner kopiert werden: `$XDG_CONFIG_HOME/opencode`, falls `XDG_CONFIG_HOME` gesetzt ist, sonst `~/.config/opencode`. Prüfe vor dem Kopieren, dass die Zieldatei noch nicht existiert; wenn sie vorhanden ist, nicht überschreiben. Die Installation erzeugt oder aktualisiert keine Dateien im Home-Konfigurationsordner und installiert keine Agentprofile.
 
-- `server.js`: v2-Verzeichnis-Einstieg; exportiert `dist/server.js`.
-- `dist/server.js`: gebauter v2-Plugin-Code, SDK `@opencode/plugin@2.0.25` wird vom Host bereitgestellt.
-- `deployment/model-fallback.v2.json`: einzige Autorität; exakt 13 Rollen (zwölf bisherige Customrollen plus builtin general) mit jeweils Primärmodell und drei vollständigen Fallbackschritten. Keine Ableitung aus Agentdateien.
-- `deployment/base-agent-sha256.json`: eingefrorene Quellhashes der zwölf erhaltenen Basisprofile; die 36 callable Fallbackprofile wurden gesichert und entfernt.
-- `deployment/activation.snippet.json`: einzufügender Plugin-Eintrag.
-- `src/v2.ts`: v2-Implementierung. Legacy-Code und seine Tests bleiben separat erhalten.
+Vor dem Aktivieren bearbeite die kopierte JSON-Datei. Für jeden explizit vorhandenen Subagenten, der Fallback erhalten soll, trage selbst exakte, in der eigenen OpenCode-Installation verfügbare Provider-/Model-Referenzen ein. Jede Kette braucht 2–10 Schritte, einschließlich Startmodell und mindestens einem Fallback. Leere `agents: {}` ist ein gültiger No-op.
 
-## Aktivierung durch die übergeordnete Instanz
+## Aktivierung
 
-1. Den Objekt-Eintrag aus `activation.snippet.json` **an das bestehende `plugins`-Array anhängen**, nicht die gesamte Konfiguration ersetzen:
+Der Objekt-Eintrag in [activation.snippet.json](activation.snippet.json) ist ein Beispiel, kein automatisch aktiver Eintrag und ersetzt niemals die vorhandene Konfiguration. Ersetze `/absolute/path/to/model-fallback.v2.json` durch den exakten absoluten Pfad zur angelegten und bearbeiteten Datei; `~` ist kein absoluter Pfad. Ergänze den Objekt-Eintrag im vorhandenen `plugins`-Array von OpenCode v2 `opencode.jsonc`; ersetze nicht das Array oder die ganze Datei. Für Paketinstallation wird `@melivo/opencode-model-fallback` verwendet. Aktiviere oder lade OpenCode nur nach eigener Entscheidung.
 
-```json
-{
-  "package": "/home/visimeos/.config/opencode/local-plugins/model-fallback",
-  "options": {
-    "configPath": "/home/visimeos/.config/opencode/local-plugins/model-fallback/deployment/model-fallback.v2.json"
-  }
-}
-```
-
-2. Nur bei bestätigter Aktivierung `opencode reload` ausführen.
-3. Im betreffenden Arbeitsverzeichnis `opencode plugin list` bzw. die v2-Plugin-API lesen: `smart-coders.model-fallback.v2-local` muss aktiv sein und auf das obige lokale `server.js` zeigen. Katalogprüfung kostet keinen Modellaufruf.
-4. Rücknahme: ausschließlich diesen Plugin-Eintrag entfernen und nach Freigabe neu laden. Agentdateien und Berechtigungen bleiben unverändert.
-
-**Keinen einzelnen Dateipfad in `plugins` konfigurieren:** v2 erwartet für explizite lokale Plugins ein Verzeichnis und sucht dort nach `server.js`. `dist/index.js` ist der Legacy-Einstieg und hier nicht zu verwenden.
-
-## General-/Streamlimit-Prüfung vor Aktivierung
-
-Builtin `general` wird ohne neue Markdowndefinition aus `chain[0].model` transformiert, ausschließlich im effektiven Subagentmodus. Die vier low-Schritte sind Opus 5.5, GLM 5.3, Kimi K3.1 Pro und Sol 6.1. Bestehende zwölf Ketten, docs-curator/Kimi-Thinking-off und Grenzen bleiben erhalten. Laufzeit-/Wartungsverträge und aktuelle lokale Testpfade: [Wartungsnotizen](../docs/maintenance.md#builtin-general-und-claude-streamlimit).
-
-Die neue native Fixtureprüfung verwendet lokale HTTP200-SSE-Fehler durch denselben Parser wie Live-Claude und prüft Originalcode, Child-/Toolidentität, unveränderten Parent und Isolation vor Prompts. Sie ruft weder Claude SDK noch Konten oder bezahlte Provider auf; Stale-Nachweise bleiben Unit-only. Erfolgreiche Fixturechecks aktivieren nichts: Installationssync und unabhängiges Review sind separate Gates; der Benutzer lädt erst danach manuell neu.
+Der Abschnitt **Historische Prüfung** und die nachfolgenden Laufzeit-/Testnotizen dokumentieren eine frühere lokale Installation und frühere Belege. Sie sind unveränderte historische Evidenz, keine aktuelle Anleitung, kein portabler Pfad und keine Aussage über die neutrale Vorlage oder automatische Home-Synchronisierung.
 
 ## Historische Prüfung
 
@@ -59,7 +35,7 @@ bun run test:v2:integration
 - `evidence/v2-parent-messages.json`, `evidence/v2-sessions.json`, `evidence/v2-native-runtime.log`: reale Testsession-/Job-/Laufzeitnachweise.
 - `evidence/live-catalog-check.json`: read-only Live-Katalogprüfung sämtlicher 48 Referenzen; keine fehlenden Modelle oder Varianten.
 
-## Verhalten und Grenzen
+## Historische Laufzeit- und Testbeobachtungen
 
 Nur konfigurierte Basisrollen in `mode: subagent` **und** mit Parent-Session sind betroffen. Keine Wildcards, kein Fallback für Primary-/Root-Sessions. Der Agent wird nie gewechselt: ursprünglicher Prompt und Berechtigungen bleiben wirksam. Die kanonische JSON liefert Modell, Variante und optional `request.body`, nicht neue Prompts/Berechtigungen. Callable Fallbackdateien sind weder Runtime- noch Wartungsabhängigkeiten.
 
