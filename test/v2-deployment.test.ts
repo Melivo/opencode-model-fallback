@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { maintainBaseAgents, validateCanonicalConfig } from "../scripts/derive-v2-config";
@@ -30,14 +30,21 @@ test("deployment template is a loadable empty v2 configuration with runtime defa
 test("default check validates without discovering HOME agent profiles", () => {
   const home = mkdtempSync(join(tmpdir(), "fallback-empty-home-"));
   try {
+    const configHome = join(home, ".config");
+    const agents = join(configHome, "opencode", "agents");
+    mkdirSync(agents, { recursive: true });
+    const sentinel = join(agents, "worker.md");
+    const content = "invalid agent profile: do not discover or modify\n";
+    writeFileSync(sentinel, content);
     const result = spawnSync(process.execPath, ["scripts/derive-v2-config.ts", "--check"], {
       cwd: new URL("..", import.meta.url),
-      env: { ...process.env, HOME: join(home, "missing-home") },
+      env: { ...process.env, HOME: home, XDG_CONFIG_HOME: configHome },
       encoding: "utf8",
     });
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({ roles: 0, changed: [] });
-    expect(readdirSync(home)).toEqual([]);
+    expect(readdirSync(agents)).toEqual(["worker.md"]);
+    expect(readFileSync(sentinel, "utf8")).toBe(content);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
