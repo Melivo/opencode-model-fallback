@@ -27,6 +27,14 @@ test("deployment template is a loadable empty v2 configuration with runtime defa
   expect(cfg).toEqual({ version: 2, cooldownMs: 300000, maxCycles: 1, agents: {} });
 });
 
+test("canonical validation rejects falsy and malformed roots with its validation error", () => {
+  for (const raw of [undefined, null, false, 0, "", NaN, [], {}]) {
+    expect(() => validateCanonicalConfig(raw)).toThrow(
+      "Expected v2 config with valid cooldown/cycle limits and an agents object"
+    );
+  }
+});
+
 test("default check validates without discovering HOME agent profiles", () => {
   const home = mkdtempSync(join(tmpdir(), "fallback-empty-home-"));
   try {

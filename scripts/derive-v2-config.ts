@@ -15,8 +15,7 @@ export interface CanonicalConfig {
 export function validateCanonicalConfig(raw: unknown): CanonicalConfig {
   const cfg = raw as CanonicalConfig;
   if (
-    !cfg ||
-    cfg.version !== 2 ||
+    cfg?.version !== 2 ||
     !Number.isFinite(cfg.cooldownMs) ||
     cfg.cooldownMs < 10000 ||
     (cfg.maxCycles !== undefined &&

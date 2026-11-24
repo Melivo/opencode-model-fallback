@@ -14,8 +14,7 @@ export interface V2Config {
 function parseConfig(raw: unknown): V2Config {
   const value = raw as V2Config;
   if (
-    !value ||
-    value.version !== 2 ||
+    value?.version !== 2 ||
     !Number.isFinite(value.cooldownMs) ||
     value.cooldownMs < 10000 ||
     !value.agents ||

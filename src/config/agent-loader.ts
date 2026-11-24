@@ -119,7 +119,7 @@ export function validateV2Step(step: V2Step): V2Step {
 
 export function parseV2Agent(content: string): V2Step {
   const data = parseFrontmatter(content) as Record<string, unknown> | null;
-  if (!data || data.mode !== "subagent" || typeof data.model !== "string") {
+  if (data?.mode !== "subagent" || typeof data.model !== "string") {
     throw new Error("Expected a subagent with an explicit model");
   }
   const step: V2Step = { model: data.model };

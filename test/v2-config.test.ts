@@ -18,6 +18,14 @@ test("v2 parser rejects malformed references, primary agents and unsafe body ove
   expect(() => parse("---\nmode: subagent\nmodel: !!js/function x\n---\n")).toThrow();
 });
 
+test("v2 parser rejects falsy and malformed frontmatter with its validation error", () => {
+  for (const scalar of ["", "null", "false", "0", '""', "[]", "{}"]) {
+    expect(() => loader.parseV2Agent(`---\n${scalar}\n---\n`)).toThrow(
+      "Expected a subagent with an explicit model"
+    );
+  }
+});
+
 test("v2 chain parser preserves model variants and optional request.body per step", () => {
   expect(typeof (loader as any).parseV2Agent).toBe("function");
   const parse = (loader as any).parseV2Agent;

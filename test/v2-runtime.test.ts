@@ -53,6 +53,12 @@ async function harness(ready = true, settings = config) {
   return { hooks, child, changes, ctx };
 }
 
+test("v2 setup rejects non-nullish falsy and malformed config roots", async () => {
+  for (const raw of [false, 0, "", NaN, [], {}]) {
+    await expect(harness(true, raw as any)).rejects.toThrow("Invalid v2 fallback config");
+  }
+});
+
 test("v2 general transform projects only canonical model for effective subagent and disposes", async () => {
   const plugin = (await import("../src/v2")).default;
   for (const mode of ["subagent", "primary", "all", undefined]) {
