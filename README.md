@@ -4,30 +4,11 @@ Native OpenCode v2 server plugin distributed as an npm package. It advances an e
 
 Check npm for available package versions and GitHub Releases for release details. See [Release and recovery runbook](docs/releases.md) for the safe-release procedure.
 
-## Legacy OpenCode v1 behavior
-
-The following fallback features and commands belong to the legacy `.` export, not the native v2 `./server` export.
-
-### What problem does this solve?
-
-If you use OpenCode with multiple models or providers, rate limits and transient provider failures can interrupt chats and force manual model switching. This plugin adds automatic model failover so OpenCode can continue with the next healthy model instead of getting stuck on repeated retries, 429s, or provider overload errors.
-
-### How does legacy model fallback work?
-
-The plugin tracks model health globally, keeps fallback depth per session, and walks an ordered fallback chain when the active model fails. If a model is already known to be unhealthy, the `chat.message` hook can preemptively redirect the next prompt before the provider returns another 429.
-
-### Legacy features
-
-- Preemptive redirect via `chat.message` when a model is already known to be rate-limited
-- Reactive fallback from both `session.status` retry events and `session.error` API errors
-- Per-agent ordered fallback chains with `"*"` wildcard support
-- Global model health tracking with automatic recovery windows
-- `/fallback-status` slash command for session depth, history, and model health
-- Structured logs with provider free-form error text redacted
-
 ## OpenCode v2 installation and configuration
 
-Install the package by adding it to the plural `plugins` key in OpenCode v2 `opencode.jsonc`. Check npm for available package versions. The package exposes its native server part as `./server`. Its shipped deployment template is deliberately neutral: `version: 2`, `cooldownMs: 300000`, `maxCycles: 1`, and an empty `agents` object. Without configured chains, the plugin is a safe no-op and does not switch models.
+V2 fallback applies only to explicitly configured child subagents; primary-agent and wildcard chains are not supported. With no configured chains, the plugin is a safe no-op and does not switch models. It can override HTTP JSON request bodies, but not WebSocket frames. Legacy status and toast features below belong to V1 and are not provided by the native v2 server.
+
+Add the package to the plural `plugins` key in OpenCode v2 `opencode.jsonc`. The package exposes its native server part as `./server`.
 
 ### Neutral template
 
@@ -72,20 +53,46 @@ To enable fallback, add an entry for an explicitly configured subagent and repla
 }
 ```
 
-Use `options.configPath` to load the file. It must be an absolute path; expand `~` yourself and replace the placeholder below with the exact path to the file you created. You can add this object to your existing `plugins` array:
+Use `options.configPath` to load the file. It must be an absolute path; expand `~` yourself and replace the placeholder below with the exact path to the file you created. For a new `opencode.jsonc`, use the complete example below. If you already have a `plugins` array, add only the package object and keep your other entries and settings:
 
 ```jsonc
 {
-  "package": "@melivo/opencode-model-fallback",
-  "options": {
-    "configPath": "/absolute/path/to/model-fallback.v2.json"
-  }
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    {
+      "package": "@melivo/opencode-model-fallback",
+      "options": {
+        "configPath": "/absolute/path/to/model-fallback.v2.json"
+      }
+    }
+  ]
 }
 ```
 
 If neither `options.config` nor `options.configPath` is supplied, the plugin uses the neutral empty config. When both are supplied, `options.config` takes precedence. OpenCode observes configuration changes; use `/reload` if needed. A process restart is not required for configuration changes.
 
 See the [official OpenCode v2 plugin guide](https://opencode.ai/docs/build/plugins) for package-based plugins and the plugins key.
+
+## Legacy OpenCode v1 behavior
+
+The following fallback features and commands belong to the legacy `.` export, not the native v2 `./server` export.
+
+### What problem does this solve?
+
+If you use OpenCode with multiple models or providers, rate limits and transient provider failures can interrupt chats and force manual model switching. This plugin adds automatic model failover so OpenCode can continue with the next healthy model instead of getting stuck on repeated retries, 429s, or provider overload errors.
+
+### How does legacy model fallback work?
+
+The plugin tracks model health globally, keeps fallback depth per session, and walks an ordered fallback chain when the active model fails. If a model is already known to be unhealthy, the `chat.message` hook can preemptively redirect the next prompt before the provider returns another 429.
+
+### Legacy features
+
+- Preemptive redirect via `chat.message` when a model is already known to be rate-limited
+- Reactive fallback from both `session.status` retry events and `session.error` API errors
+- Per-agent ordered fallback chains with `"*"` wildcard support
+- Global model health tracking with automatic recovery windows
+- `/fallback-status` slash command for session depth, history, and model health
+- Structured logs with provider free-form error text redacted
 
 ## Legacy OpenCode v1 plugin
 

@@ -5,8 +5,8 @@ Thank you for your interest in contributing! This document outlines the process 
 ## Getting Started
 
 ```bash
-# Clone the repo
-git clone https://github.com/Smart-Coders-HQ/opencode-model-fallback.git
+# Clone the Melivo fork
+git clone https://github.com/Melivo/opencode-model-fallback.git
 cd opencode-model-fallback
 
 # Install dependencies
@@ -16,7 +16,7 @@ bun install
 bun test
 
 # Type check
-bunx tsc --noEmit
+bun run typecheck
 
 # Build
 bun run build
@@ -24,10 +24,10 @@ bun run build
 
 ## Development Workflow
 
-1. **Fork** the repository and create a feature branch from `main`.
-2. **Write code** — follow the [TypeScript/JavaScript conventions](https://github.com/Smart-Coders-HQ/opencode-model-fallback/blob/main/AGENTS.md) in `AGENTS.md`.
+1. **Fork** the [Melivo repository](https://github.com/Melivo/opencode-model-fallback) and create a feature branch from `main`.
+2. **Write code** — follow the [TypeScript/JavaScript conventions](AGENTS.md).
 3. **Test** — add tests for new functionality. All tests must pass: `bun test`.
-4. **Lint** — run `bun run lint` and `bun run format` before committing.
+4. **Lint and format** — run `bun run lint` and `bun run format:check` before committing.
 5. **Commit** — use [Conventional Commits](https://www.conventionalcommits.org/) format:
    - `feat: add X` — new feature (triggers minor release)
    - `fix: correct Y` — bug fix (triggers patch release)
@@ -35,16 +35,17 @@ bun run build
    - `test: add coverage for W` — test changes
    - `chore: bump deps` — maintenance
    - `BREAKING CHANGE:` in footer — triggers major release
-6. **Pull Request** — open a PR against `main`. Fill in the PR template.
+6. **Pull Request** — open a PR against `main` in the [Melivo repository](https://github.com/Melivo/opencode-model-fallback/pulls). Fill in the PR template.
 
 ## Quality Gates
 
 Before a PR can be merged, all of these must pass:
 
 - `bun run lint` — Biome linting
-- `bun test` — 101 tests, 0 failures
-- `bunx tsc --noEmit` — TypeScript type check
-- `bun run build` — clean build
+- `bun test` — unit tests
+- `bun run typecheck` — TypeScript type check
+- `bun run format:check` — Biome formatting check
+- `bun run build` — build
 
 ## Architecture
 
@@ -69,7 +70,7 @@ See `AGENTS.md` for full architecture details and key invariants.
 
 ## Reporting Issues
 
-Please use [GitHub Issues](https://github.com/Smart-Coders-HQ/opencode-model-fallback/issues) and select the appropriate template.
+Please use [GitHub Issues](https://github.com/Melivo/opencode-model-fallback/issues) and select the appropriate template.
 
 ## Security Vulnerabilities
 
